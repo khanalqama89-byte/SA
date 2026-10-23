@@ -107,8 +107,11 @@ export default function Footer() {
           <div>
             © {new Date().getFullYear()} Aalq Converter (aalq). All rights reserved.
           </div>
-          <div style={{ display: 'flex', gap: '1.5rem' }}>
-            <Link to="/tools" style={{ color: '#cbd5e1' }}>Tools Directory</Link>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+            <Link to="/tools" style={{ color: '#cbd5e1' }}>All Tools</Link>
+            <Link to="/privacy" style={{ color: '#cbd5e1' }}>Privacy Policy</Link>
+            <Link to="/terms" style={{ color: '#cbd5e1' }}>Terms of Service</Link>
+            <Link to="/contact" style={{ color: '#cbd5e1' }}>Contact Us</Link>
           </div>
         </div>
       </div>
