@@ -3,6 +3,22 @@ import { request } from './api';
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const conversionService = {
+  /**
+   * Direct conversion: sends the file directly in a single request and returns the converted document immediately
+   */
+  async startDirectConversion(toolSlug, file, options = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('toolSlug', toolSlug);
+    formData.append('options', JSON.stringify(options || {}));
+
+    const res = await request('/conversions', {
+      method: 'POST',
+      body: formData
+    });
+    return res.data;
+  },
+
   async startConversion(toolSlug, sourceFileId, options = {}) {
     const res = await request('/conversions', {
       method: 'POST',
@@ -24,24 +40,48 @@ export const conversionService = {
     return `${BASE_URL}/conversions/${jobId}/download`;
   },
 
-  async downloadResult(jobId, defaultFilename = 'converted_document') {
-    const directUrl = `${BASE_URL}/conversions/${jobId}/download`;
+  /**
+   * Safe cross-platform document download:
+   * Prefers in-memory base64 blob to avoid serverless multi-instance 404/403 errors on mobile.
+   */
+  async downloadResult(jobId, defaultFilename = 'converted_document', cachedBase64 = null, mimeType = null) {
+    // 1. If we have the converted base64 data directly from the conversion response
+    if (cachedBase64) {
+      try {
+        const byteCharacters = atob(cachedBase64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType || 'application/octet-stream' });
 
-    // On mobile devices, direct browser navigation is the most reliable download mechanism
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-      window.location.href = directUrl;
-      return;
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = defaultFilename;
+        document.body.appendChild(a);
+        a.click();
+
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+          a.remove();
+        }, 3000);
+        return;
+      } catch (e) {
+        console.warn('In-memory download failed, falling back to network fetch:', e);
+      }
     }
 
+    // 2. Network fetch fallback
+    const directUrl = `${BASE_URL}/conversions/${jobId}/download`;
     try {
       const response = await fetch(directUrl, { method: 'GET' });
-
       if (!response.ok) {
         throw new Error(`Download failed with status ${response.status}`);
       }
 
-      // Try extracting filename from Content-Disposition header
       let filename = defaultFilename;
       const disposition = response.headers.get('Content-Disposition');
       if (disposition && disposition.includes('filename=')) {
@@ -65,8 +105,14 @@ export const conversionService = {
         a.remove();
       }, 5000);
     } catch (err) {
-      // Direct navigation fallback
-      window.location.href = directUrl;
+      // Last-ditch trigger
+      const a = document.createElement('a');
+      a.href = directUrl;
+      a.download = defaultFilename;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     }
   },
 

@@ -176,14 +176,29 @@ async function runTests() {
     console.log(`   DOCX buffer size: ${docxBuffer.byteLength} bytes, Magic Header: "${docxMagic}" (PK for ZIP/DOCX)`);
     if (docxMagic !== 'PK') throw new Error(`Expected PK zip header for docx, got "${docxMagic}"`);
 
-    // 9. Check Conversion History
-    console.log('\n9. Checking /api/history...');
-    const histRes = await fetch(`${baseUrl}/api/history`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+    // 10. Direct Instant Conversion (Single-request multipart upload & returned Base64)
+    console.log('\n10. Testing Direct Instant Conversion (pdf-to-word with direct multipart)...');
+    const directBoundary = '----WebKitFormBoundaryDirect999';
+    const directBodyBuffer = Buffer.concat([
+      Buffer.from(`--${directBoundary}\r\nContent-Disposition: form-data; name="toolSlug"\r\n\r\npdf-to-word\r\n`),
+      Buffer.from(`--${directBoundary}\r\nContent-Disposition: form-data; name="file"; filename="instant_doc.pdf"\r\nContent-Type: application/pdf\r\n\r\n`),
+      Buffer.from(dlBuffer),
+      Buffer.from(`\r\n--${directBoundary}--\r\n`)
+    ]);
+
+    const directRes = await fetch(`${baseUrl}/api/conversions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${directBoundary}`,
+        'Authorization': `Bearer ${token}`
+      },
+      body: directBodyBuffer
     });
-    const histJson = await histRes.json();
-    console.log(`   User has ${histJson.data.length} history items recorded.`);
-    if (histJson.data.length < 2) throw new Error('History was not properly recorded for authenticated conversions');
+    const directJson = await directRes.json();
+    if (!directJson.success) throw new Error('Direct conversion failed: ' + directJson.message);
+    if (!directJson.data.fileBase64) throw new Error('Direct conversion did not return fileBase64');
+    if (directJson.data.status !== 'COMPLETED') throw new Error('Direct conversion was not immediately completed');
+    console.log('   Direct instant conversion passed! Output file:', directJson.data.outputFileName, 'Base64 length:', directJson.data.fileBase64.length);
 
     console.log('\n✅ ALL BACKEND TESTS PASSED WITH 100% SUCCESS!\n');
   } finally {

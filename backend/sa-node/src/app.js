@@ -11,14 +11,16 @@ const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
-// Enable CORS
+// Enable CORS for all origins, headers and methods
 app.use(cors({
-  origin: '*',
+  origin: true,
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['*']
 }));
+app.options('*', cors());
 
-// Body Parsers
+// Body Parsers (support large files up to 50MB)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 

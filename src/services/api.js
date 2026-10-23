@@ -1,9 +1,14 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export async function request(endpoint, options = {}) {
+  const token = localStorage.getItem('sa_token');
   const headers = {
     ...options.headers
   };
+
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   // Do not set Content-Type if sending FormData (browser automatically sets multipart boundary)
   if (!(options.body instanceof FormData) && !headers['Content-Type']) {

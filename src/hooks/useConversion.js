@@ -10,6 +10,7 @@ export function useConversion(toolSlug) {
   const [errorMessage, setErrorMessage] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [outputFileName, setOutputFileName] = useState('');
+  const [cachedResult, setCachedResult] = useState(null); // { base64, mimeType }
 
   const pollingRef = useRef(null);
 
@@ -26,6 +27,7 @@ export function useConversion(toolSlug) {
     setErrorMessage(null);
     setJobId(null);
     setOutputFileName('');
+    setCachedResult(null);
   };
 
   const removeFile = () => {
@@ -36,6 +38,7 @@ export function useConversion(toolSlug) {
     setErrorMessage(null);
     setJobId(null);
     setOutputFileName('');
+    setCachedResult(null);
   };
 
   const startProcess = async (options = {}) => {
@@ -43,28 +46,34 @@ export function useConversion(toolSlug) {
 
     try {
       setErrorMessage(null);
-      setStage('UPLOADING');
-      setStatusMessage('Uploading document securely...');
-      setProgress(10);
-
-      // 1. Upload File with Progress Tracking
-      const fileRecord = await fileService.uploadFile(selectedFile, (uploadPct) => {
-        setProgress(Math.round(uploadPct * 0.4)); // upload accounts for 0-40% of total flow
-      });
-
-      // 2. Create Conversion Job
       setStage('CONVERTING');
-      setStatusMessage('Queuing document conversion...');
-      setProgress(45);
+      setStatusMessage('Sending document to SA Engine...');
+      setProgress(25);
 
-      const jobResponse = await conversionService.startConversion(toolSlug, fileRecord.id, options);
-      const newJobId = jobResponse.jobId;
-      setJobId(newJobId);
+      // Perform direct conversion (instant serverless roundtrip)
+      const resData = await conversionService.startDirectConversion(toolSlug, selectedFile, options);
 
-      // 3. Poll Conversion Progress
-      setStatusMessage('Processing document with SA Engine...');
-      pollJobStatus(newJobId);
+      setProgress(85);
+      setStatusMessage('Processing completed!');
 
+      if (resData && resData.status === 'COMPLETED') {
+        setProgress(100);
+        setStage('COMPLETED');
+        setStatusMessage('Conversion completed successfully!');
+        setJobId(resData.jobId);
+        setOutputFileName(resData.outputFileName || 'converted_document');
+        setCachedResult({
+          base64: resData.fileBase64,
+          mimeType: resData.mimeType
+        });
+      } else if (resData && resData.jobId) {
+        // Fallback in case async queue is returned
+        setJobId(resData.jobId);
+        setStatusMessage('Converting document with SA Engine...');
+        pollJobStatus(resData.jobId);
+      } else {
+        throw new Error('Unexpected response received from converter engine.');
+      }
     } catch (err) {
       setStage('FAILED');
       setErrorMessage(err.message || 'An unexpected error occurred during processing.');
@@ -105,7 +114,12 @@ export function useConversion(toolSlug) {
 
   const downloadOutput = async () => {
     if (!jobId) return;
-    await conversionService.downloadResult(jobId, outputFileName);
+    await conversionService.downloadResult(
+      jobId,
+      outputFileName,
+      cachedResult?.base64,
+      cachedResult?.mimeType
+    );
   };
 
   const reset = () => {

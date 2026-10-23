@@ -4,41 +4,88 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database/db');
 const storageManager = require('../storage/storageManager');
 const { executeConversion } = require('../converters');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
-/**
- * Background worker to run conversion job
- */
-async function processJob(jobId, toolSlug, sourceFileId, options = {}) {
+// POST /api/conversions (supports direct multipart upload, base64 data, or sourceFileId)
+router.post('/', upload.single('file'), async (req, res) => {
   try {
-    db.conversionJobs.update(jobId, {
+    let { toolSlug, sourceFileId, fileBase64, originalName, options = {} } = req.body;
+
+    if (typeof options === 'string') {
+      try { options = JSON.parse(options); } catch {}
+    }
+
+    if (!toolSlug) {
+      return res.status(400).json({
+        success: false,
+        message: 'toolSlug is required',
+        data: null
+      });
+    }
+
+    const tool = db.tools.findBySlug(toolSlug);
+    if (!tool) {
+      return res.status(404).json({
+        success: false,
+        message: `Tool not found: ${toolSlug}`,
+        data: null
+      });
+    }
+
+    let inputBuffer = null;
+    let fileName = originalName || 'document';
+
+    // 1. Direct file upload via multipart
+    if (req.file) {
+      inputBuffer = req.file.buffer;
+      fileName = req.file.originalname;
+    }
+    // 2. Direct Base64 payload
+    else if (fileBase64) {
+      inputBuffer = Buffer.from(fileBase64, 'base64');
+    }
+    // 3. Pre-uploaded file reference
+    else if (sourceFileId) {
+      const sourceFile = db.files.findById(sourceFileId);
+      if (sourceFile) {
+        fileName = sourceFile.originalName;
+      }
+      inputBuffer = await storageManager.getFileBuffer(sourceFileId);
+    }
+
+    if (!inputBuffer) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file data found for conversion. Please select a valid document.',
+        data: null
+      });
+    }
+
+    const jobId = uuidv4();
+    const userId = req.user ? req.user.id : null;
+
+    // Create tracking record
+    const job = db.conversionJobs.create({
+      id: jobId,
+      userId,
+      sourceFileId: sourceFileId || jobId,
+      sourceFormat: tool.sourceFormat,
+      targetFormat: tool.targetFormat,
       status: 'PROCESSING',
-      progress: 50,
-      startedAt: new Date().toISOString()
+      progress: 60
     });
 
-    const fileRecord = db.files.findById(sourceFileId);
-    if (!fileRecord) {
-      throw new Error('Source file record not found');
-    }
-
-    const inputBuffer = await storageManager.getFileBuffer(sourceFileId);
-    if (!inputBuffer) {
-      throw new Error('Could not read source file data from storage');
-    }
-
-    db.conversionJobs.update(jobId, { progress: 75 });
-
-    // Execute conversion
+    // Execute conversion synchronously (completes in ~200-500ms, preventing Lambda freeze)
     const result = await executeConversion(toolSlug, inputBuffer, options);
 
     // Formulate output filename
-    const originalBase = path.parse(fileRecord.originalName).name;
+    const originalBase = path.parse(fileName).name;
     const outputFileName = `${originalBase}_converted${result.extension}`;
     const outputFileId = uuidv4();
 
-    // Save processed file
+    // Cache output in storage
     const { filePath, size } = await storageManager.saveProcessed(
       outputFileId,
       result.buffer,
@@ -46,10 +93,9 @@ async function processJob(jobId, toolSlug, sourceFileId, options = {}) {
       result.mimeType
     );
 
-    // Create file record for output
     db.files.create({
       id: outputFileId,
-      userId: fileRecord.userId,
+      userId,
       originalName: outputFileName,
       storedName: `${outputFileId}${result.extension}`,
       extension: result.extension,
@@ -68,92 +114,37 @@ async function processJob(jobId, toolSlug, sourceFileId, options = {}) {
       completedAt: new Date().toISOString()
     });
 
-    // Record in history if user was authenticated
-    if (fileRecord.userId) {
-      const tool = db.tools.findBySlug(toolSlug);
+    if (userId) {
       db.history.create({
-        userId: fileRecord.userId,
+        userId,
         jobId,
-        toolName: tool ? tool.name : toolSlug,
-        sourceFileName: fileRecord.originalName,
+        toolName: tool.name,
+        sourceFileName: fileName,
         outputFileName,
         status: 'COMPLETED'
       });
     }
-  } catch (err) {
-    console.error(`Conversion job ${jobId} failed:`, err.message);
-    db.conversionJobs.update(jobId, {
-      status: 'FAILED',
-      progress: 0,
-      errorMessage: err.message || 'Conversion failed unexpectedly',
-      completedAt: new Date().toISOString()
-    });
-  }
-}
 
-// POST /api/conversions
-router.post('/', async (req, res) => {
-  try {
-    const { toolSlug, sourceFileId, options = {} } = req.body;
-
-    if (!toolSlug || !sourceFileId) {
-      return res.status(400).json({
-        success: false,
-        message: 'toolSlug and sourceFileId are required',
-        data: null
-      });
-    }
-
-    const tool = db.tools.findBySlug(toolSlug);
-    if (!tool) {
-      return res.status(404).json({
-        success: false,
-        message: `Tool not found: ${toolSlug}`,
-        data: null
-      });
-    }
-
-    const sourceFile = db.files.findById(sourceFileId);
-    if (!sourceFile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Source file not found',
-        data: null
-      });
-    }
-
-    const jobId = uuidv4();
-    const userId = req.user ? req.user.id : null;
-
-    const job = db.conversionJobs.create({
-      id: jobId,
-      userId,
-      sourceFileId,
-      sourceFormat: tool.sourceFormat,
-      targetFormat: tool.targetFormat,
-      status: 'QUEUED',
-      progress: 15
-    });
-
-    // Run conversion asynchronously
-    setImmediate(() => {
-      processJob(jobId, toolSlug, sourceFileId, options);
-    });
-
-    return res.status(202).json({
+    return res.status(200).json({
       success: true,
-      message: 'Conversion job initiated',
+      message: 'Conversion completed successfully',
       data: {
         jobId: job.id,
-        status: job.status,
-        message: 'Conversion job initiated'
+        status: 'COMPLETED',
+        progress: 100,
+        outputFileId,
+        outputFileName,
+        mimeType: result.mimeType,
+        size: result.buffer.length,
+        fileBase64: result.buffer.toString('base64'),
+        downloadUrl: `/api/conversions/${jobId}/download`
       }
     });
   } catch (err) {
-    console.error('Job creation error:', err);
+    console.error('Job execution error:', err);
     return res.status(500).json({
       success: false,
-      message: err.message || 'Failed to start conversion job',
+      message: err.message || 'Conversion failed unexpectedly',
       data: null
     });
   }
