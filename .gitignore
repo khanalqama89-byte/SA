@@ -1,0 +1,44 @@
+# Node & Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm/
+.vercel/
+
+# Maven & Java
+target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Storage and uploads (preserve directories with .gitkeep)
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/processed/*
+!storage/processed/.gitkeep
+storage/temp/*
+!storage/temp/.gitkeep
+
+# IDE and Editor
+.idea/
+*.iml
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# Logs & Temp
+logs/
+*.log
+temp/
+
+# Environment files
+.env
+.env.production

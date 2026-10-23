@@ -1,0 +1,466 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "Administrator",
+      "email": "admin@sa.local",
+      "password": "$2a$10$4UJsKaM6PjVSSW.viwzaSOQsMfkDHdhw1oQdB9nlz9I26ozX/qa72",
+      "role": "ADMIN",
+      "enabled": true,
+      "createdAt": "2026-10-23T09:35:05.550Z"
+    },
+    {
+      "id": 2,
+      "name": "Test User",
+      "email": "test_1792748106513@example.com",
+      "password": "$2a$10$OOctiSC5RNLxy16fmdQlD.qXZ1qTfbg6LMeTC4paxDzzUM4/L3cZy",
+      "role": "USER",
+      "enabled": true,
+      "createdAt": "2026-10-23T09:35:06.616Z"
+    },
+    {
+      "id": 3,
+      "name": "Test User",
+      "email": "test_1792748256897@example.com",
+      "password": "$2a$10$AoaW1AxZ54NS6AuIcjBF9e1uCG9I/9U9NUH6HmeY4L3mkei90U8si",
+      "role": "USER",
+      "enabled": true,
+      "createdAt": "2026-10-23T09:37:37.014Z"
+    },
+    {
+      "id": 4,
+      "name": "Test User",
+      "email": "test_1792748309423@example.com",
+      "password": "$2a$10$Wa55V39WrMoMZ3WfovLt4OphusL3F0qTQryBoSNbhwTHXcyeMdYu2",
+      "role": "USER",
+      "enabled": true,
+      "createdAt": "2026-10-23T09:38:29.534Z"
+    }
+  ],
+  "files": [
+    {
+      "id": "5242ab7d-ab40-43ea-9e46-041fed8e09da",
+      "userId": 2,
+      "originalName": "sample.txt",
+      "storedName": "5242ab7d-ab40-43ea-9e46-041fed8e09da.txt",
+      "extension": ".txt",
+      "mimeType": "text/plain",
+      "size": 105,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\uploads\\5242ab7d-ab40-43ea-9e46-041fed8e09da.txt",
+      "fileType": "DOCUMENT",
+      "createdAt": "2026-10-23T09:35:06.710Z",
+      "expiresAt": "2026-10-24T09:35:06.710Z"
+    },
+    {
+      "id": "2856beec-597c-4bc8-aeb9-2e9e529723b1",
+      "userId": 2,
+      "originalName": "sample_converted.pdf",
+      "storedName": "2856beec-597c-4bc8-aeb9-2e9e529723b1.pdf",
+      "extension": ".pdf",
+      "mimeType": "application/pdf",
+      "size": 987,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\processed\\2856beec-597c-4bc8-aeb9-2e9e529723b1.pdf",
+      "fileType": "PROCESSED",
+      "createdAt": "2026-10-23T09:35:06.746Z",
+      "expiresAt": "2026-10-24T09:35:06.746Z"
+    },
+    {
+      "id": "257cde92-94cc-474c-bd60-9823b83e8e8b",
+      "userId": 2,
+      "originalName": "sample.pdf",
+      "storedName": "257cde92-94cc-474c-bd60-9823b83e8e8b.pdf",
+      "extension": ".pdf",
+      "mimeType": "application/pdf",
+      "size": 987,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\uploads\\257cde92-94cc-474c-bd60-9823b83e8e8b.pdf",
+      "fileType": "DOCUMENT",
+      "createdAt": "2026-10-23T09:35:07.168Z",
+      "expiresAt": "2026-10-24T09:35:07.168Z"
+    },
+    {
+      "id": "3cbcfde7-fc4f-4a41-8f94-2d2e77fc26a2",
+      "userId": 3,
+      "originalName": "sample.txt",
+      "storedName": "3cbcfde7-fc4f-4a41-8f94-2d2e77fc26a2.txt",
+      "extension": ".txt",
+      "mimeType": "text/plain",
+      "size": 105,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\uploads\\3cbcfde7-fc4f-4a41-8f94-2d2e77fc26a2.txt",
+      "fileType": "DOCUMENT",
+      "createdAt": "2026-10-23T09:37:37.100Z",
+      "expiresAt": "2026-10-24T09:37:37.100Z"
+    },
+    {
+      "id": "8d709a28-be6a-4518-bb8b-2c41c763dcf5",
+      "userId": 3,
+      "originalName": "sample_converted.pdf",
+      "storedName": "8d709a28-be6a-4518-bb8b-2c41c763dcf5.pdf",
+      "extension": ".pdf",
+      "mimeType": "application/pdf",
+      "size": 987,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\processed\\8d709a28-be6a-4518-bb8b-2c41c763dcf5.pdf",
+      "fileType": "PROCESSED",
+      "createdAt": "2026-10-23T09:37:37.134Z",
+      "expiresAt": "2026-10-24T09:37:37.134Z"
+    },
+    {
+      "id": "195ab044-17e6-4b06-862c-35f9ad2f564d",
+      "userId": 3,
+      "originalName": "sample.pdf",
+      "storedName": "195ab044-17e6-4b06-862c-35f9ad2f564d.pdf",
+      "extension": ".pdf",
+      "mimeType": "application/pdf",
+      "size": 987,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\uploads\\195ab044-17e6-4b06-862c-35f9ad2f564d.pdf",
+      "fileType": "DOCUMENT",
+      "createdAt": "2026-10-23T09:37:37.552Z",
+      "expiresAt": "2026-10-24T09:37:37.552Z"
+    },
+    {
+      "id": "893b1be5-d1bd-4369-91da-4b0a8b20a210",
+      "userId": 3,
+      "originalName": "sample_converted.docx",
+      "storedName": "893b1be5-d1bd-4369-91da-4b0a8b20a210.docx",
+      "extension": ".docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 9914,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\processed\\893b1be5-d1bd-4369-91da-4b0a8b20a210.docx",
+      "fileType": "PROCESSED",
+      "createdAt": "2026-10-23T09:37:38.050Z",
+      "expiresAt": "2026-10-24T09:37:38.050Z"
+    },
+    {
+      "id": "aa28da8b-8213-42c5-81ef-4c8bbc636ee2",
+      "userId": 4,
+      "originalName": "sample.txt",
+      "storedName": "aa28da8b-8213-42c5-81ef-4c8bbc636ee2.txt",
+      "extension": ".txt",
+      "mimeType": "text/plain",
+      "size": 105,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\uploads\\aa28da8b-8213-42c5-81ef-4c8bbc636ee2.txt",
+      "fileType": "DOCUMENT",
+      "createdAt": "2026-10-23T09:38:29.629Z",
+      "expiresAt": "2026-10-24T09:38:29.629Z"
+    },
+    {
+      "id": "39ccd16f-342f-4d4d-a5e2-6c024baf6502",
+      "userId": 4,
+      "originalName": "sample_converted.pdf",
+      "storedName": "39ccd16f-342f-4d4d-a5e2-6c024baf6502.pdf",
+      "extension": ".pdf",
+      "mimeType": "application/pdf",
+      "size": 987,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\processed\\39ccd16f-342f-4d4d-a5e2-6c024baf6502.pdf",
+      "fileType": "PROCESSED",
+      "createdAt": "2026-10-23T09:38:29.664Z",
+      "expiresAt": "2026-10-24T09:38:29.664Z"
+    },
+    {
+      "id": "d6f64ea3-9391-423e-94c6-d7d3e820a9b3",
+      "userId": 4,
+      "originalName": "sample.pdf",
+      "storedName": "d6f64ea3-9391-423e-94c6-d7d3e820a9b3.pdf",
+      "extension": ".pdf",
+      "mimeType": "application/pdf",
+      "size": 987,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\uploads\\d6f64ea3-9391-423e-94c6-d7d3e820a9b3.pdf",
+      "fileType": "DOCUMENT",
+      "createdAt": "2026-10-23T09:38:30.073Z",
+      "expiresAt": "2026-10-24T09:38:30.073Z"
+    },
+    {
+      "id": "2d8f7680-29da-4e47-8ba0-fcad8159a818",
+      "userId": 4,
+      "originalName": "sample_converted.docx",
+      "storedName": "2d8f7680-29da-4e47-8ba0-fcad8159a818.docx",
+      "extension": ".docx",
+      "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 9914,
+      "storagePath": "C:\\Users\\Lenovo T480s\\.gemini\\antigravity-ide\\scratch\\SA\\storage\\processed\\2d8f7680-29da-4e47-8ba0-fcad8159a818.docx",
+      "fileType": "PROCESSED",
+      "createdAt": "2026-10-23T09:38:30.547Z",
+      "expiresAt": "2026-10-24T09:38:30.547Z"
+    }
+  ],
+  "conversionJobs": [
+    {
+      "id": "d475ad3f-4848-477d-a6d4-ba6be0fcd983",
+      "userId": 2,
+      "sourceFileId": "5242ab7d-ab40-43ea-9e46-041fed8e09da",
+      "outputFileId": "2856beec-597c-4bc8-aeb9-2e9e529723b1",
+      "sourceFormat": "txt",
+      "targetFormat": "pdf",
+      "status": "COMPLETED",
+      "progress": 100,
+      "errorMessage": null,
+      "outputFileName": "sample_converted.pdf",
+      "createdAt": "2026-10-23T09:35:06.714Z",
+      "startedAt": "2026-10-23T09:35:06.715Z",
+      "completedAt": "2026-10-23T09:35:06.747Z"
+    },
+    {
+      "id": "c79b7970-e884-4f3d-85fc-99fe16dc81cd",
+      "userId": 2,
+      "sourceFileId": "257cde92-94cc-474c-bd60-9823b83e8e8b",
+      "outputFileId": null,
+      "sourceFormat": "pdf",
+      "targetFormat": "docx",
+      "status": "FAILED",
+      "progress": 0,
+      "errorMessage": "Invalid PDF structure",
+      "outputFileName": null,
+      "createdAt": "2026-10-23T09:35:07.178Z",
+      "startedAt": "2026-10-23T09:35:07.184Z",
+      "completedAt": "2026-10-23T09:35:07.265Z"
+    },
+    {
+      "id": "b0067c9d-e46e-4c32-baab-cce07121c2ad",
+      "userId": 3,
+      "sourceFileId": "3cbcfde7-fc4f-4a41-8f94-2d2e77fc26a2",
+      "outputFileId": "8d709a28-be6a-4518-bb8b-2c41c763dcf5",
+      "sourceFormat": "txt",
+      "targetFormat": "pdf",
+      "status": "COMPLETED",
+      "progress": 100,
+      "errorMessage": null,
+      "outputFileName": "sample_converted.pdf",
+      "createdAt": "2026-10-23T09:37:37.104Z",
+      "startedAt": "2026-10-23T09:37:37.105Z",
+      "completedAt": "2026-10-23T09:37:37.135Z"
+    },
+    {
+      "id": "4c826191-3656-4c92-8fae-165403cb9faa",
+      "userId": 3,
+      "sourceFileId": "195ab044-17e6-4b06-862c-35f9ad2f564d",
+      "outputFileId": "893b1be5-d1bd-4369-91da-4b0a8b20a210",
+      "sourceFormat": "pdf",
+      "targetFormat": "docx",
+      "status": "COMPLETED",
+      "progress": 100,
+      "errorMessage": null,
+      "outputFileName": "sample_converted.docx",
+      "createdAt": "2026-10-23T09:37:37.561Z",
+      "startedAt": "2026-10-23T09:37:37.574Z",
+      "completedAt": "2026-10-23T09:37:38.051Z"
+    },
+    {
+      "id": "9fa89002-ce2d-4041-aa71-de5b4e9099fd",
+      "userId": 4,
+      "sourceFileId": "aa28da8b-8213-42c5-81ef-4c8bbc636ee2",
+      "outputFileId": "39ccd16f-342f-4d4d-a5e2-6c024baf6502",
+      "sourceFormat": "txt",
+      "targetFormat": "pdf",
+      "status": "COMPLETED",
+      "progress": 100,
+      "errorMessage": null,
+      "outputFileName": "sample_converted.pdf",
+      "createdAt": "2026-10-23T09:38:29.634Z",
+      "startedAt": "2026-10-23T09:38:29.636Z",
+      "completedAt": "2026-10-23T09:38:29.665Z"
+    },
+    {
+      "id": "26930efe-5f59-440d-9bbe-931190e27a06",
+      "userId": 4,
+      "sourceFileId": "d6f64ea3-9391-423e-94c6-d7d3e820a9b3",
+      "outputFileId": "2d8f7680-29da-4e47-8ba0-fcad8159a818",
+      "sourceFormat": "pdf",
+      "targetFormat": "docx",
+      "status": "COMPLETED",
+      "progress": 100,
+      "errorMessage": null,
+      "outputFileName": "sample_converted.docx",
+      "createdAt": "2026-10-23T09:38:30.080Z",
+      "startedAt": "2026-10-23T09:38:30.090Z",
+      "completedAt": "2026-10-23T09:38:30.548Z"
+    }
+  ],
+  "conversionHistory": [
+    {
+      "id": 1,
+      "userId": 2,
+      "jobId": "d475ad3f-4848-477d-a6d4-ba6be0fcd983",
+      "toolName": "Text to PDF",
+      "sourceFileName": "sample.txt",
+      "outputFileName": "sample_converted.pdf",
+      "status": "COMPLETED",
+      "createdAt": "2026-10-23T09:35:06.747Z"
+    },
+    {
+      "id": 2,
+      "userId": 3,
+      "jobId": "b0067c9d-e46e-4c32-baab-cce07121c2ad",
+      "toolName": "Text to PDF",
+      "sourceFileName": "sample.txt",
+      "outputFileName": "sample_converted.pdf",
+      "status": "COMPLETED",
+      "createdAt": "2026-10-23T09:37:37.136Z"
+    },
+    {
+      "id": 3,
+      "userId": 3,
+      "jobId": "4c826191-3656-4c92-8fae-165403cb9faa",
+      "toolName": "PDF to Word",
+      "sourceFileName": "sample.pdf",
+      "outputFileName": "sample_converted.docx",
+      "status": "COMPLETED",
+      "createdAt": "2026-10-23T09:37:38.052Z"
+    },
+    {
+      "id": 4,
+      "userId": 4,
+      "jobId": "9fa89002-ce2d-4041-aa71-de5b4e9099fd",
+      "toolName": "Text to PDF",
+      "sourceFileName": "sample.txt",
+      "outputFileName": "sample_converted.pdf",
+      "status": "COMPLETED",
+      "createdAt": "2026-10-23T09:38:29.666Z"
+    },
+    {
+      "id": 5,
+      "userId": 4,
+      "jobId": "26930efe-5f59-440d-9bbe-931190e27a06",
+      "toolName": "PDF to Word",
+      "sourceFileName": "sample.pdf",
+      "outputFileName": "sample_converted.docx",
+      "status": "COMPLETED",
+      "createdAt": "2026-10-23T09:38:30.549Z"
+    }
+  ],
+  "tools": [
+    {
+      "id": 1,
+      "name": "PDF to Word",
+      "slug": "pdf-to-word",
+      "description": "Convert PDF documents to editable Microsoft Word (DOCX) files accurately.",
+      "sourceFormat": "pdf",
+      "targetFormat": "docx",
+      "enabled": true
+    },
+    {
+      "id": 2,
+      "name": "Word to PDF",
+      "slug": "word-to-pdf",
+      "description": "Convert Word (DOCX) documents into standard PDF documents.",
+      "sourceFormat": "docx",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 3,
+      "name": "PDF to Text",
+      "slug": "pdf-to-text",
+      "description": "Extract text content from PDF documents cleanly into Plain Text (TXT).",
+      "sourceFormat": "pdf",
+      "targetFormat": "txt",
+      "enabled": true
+    },
+    {
+      "id": 4,
+      "name": "PDF to JPG",
+      "slug": "pdf-to-jpg",
+      "description": "Extract or render PDF pages into high-resolution JPG images.",
+      "sourceFormat": "pdf",
+      "targetFormat": "jpg",
+      "enabled": true
+    },
+    {
+      "id": 5,
+      "name": "JPG to PDF",
+      "slug": "jpg-to-pdf",
+      "description": "Convert JPG images into a single professional PDF document.",
+      "sourceFormat": "jpg",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 6,
+      "name": "PNG to PDF",
+      "slug": "png-to-pdf",
+      "description": "Convert PNG images into a clean, crisp PDF document.",
+      "sourceFormat": "png",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 7,
+      "name": "PDF to PNG",
+      "slug": "pdf-to-png",
+      "description": "Render PDF pages into crystal clear lossless PNG images.",
+      "sourceFormat": "pdf",
+      "targetFormat": "png",
+      "enabled": true
+    },
+    {
+      "id": 8,
+      "name": "Merge PDF",
+      "slug": "merge-pdf",
+      "description": "Combine multiple PDF files into one single organized PDF document.",
+      "sourceFormat": "pdf",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 9,
+      "name": "Split PDF",
+      "slug": "split-pdf",
+      "description": "Separate PDF pages or extract a specific range into standalone PDFs.",
+      "sourceFormat": "pdf",
+      "targetFormat": "zip",
+      "enabled": true
+    },
+    {
+      "id": 10,
+      "name": "Compress PDF",
+      "slug": "compress-pdf",
+      "description": "Reduce PDF file size efficiently while maintaining visual quality.",
+      "sourceFormat": "pdf",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 11,
+      "name": "Rotate PDF",
+      "slug": "rotate-pdf",
+      "description": "Rotate PDF pages 90, 180, or 270 degrees permanently.",
+      "sourceFormat": "pdf",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 12,
+      "name": "Extract PDF Pages",
+      "slug": "extract-pdf-pages",
+      "description": "Extract selected pages from any PDF document into a new PDF.",
+      "sourceFormat": "pdf",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 13,
+      "name": "Delete PDF Pages",
+      "slug": "delete-pdf-pages",
+      "description": "Remove unwanted pages from a PDF document effortlessly.",
+      "sourceFormat": "pdf",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 14,
+      "name": "HTML to PDF",
+      "slug": "html-to-pdf",
+      "description": "Convert HTML documents or webpages into formatted PDF documents.",
+      "sourceFormat": "html",
+      "targetFormat": "pdf",
+      "enabled": true
+    },
+    {
+      "id": 15,
+      "name": "Text to PDF",
+      "slug": "text-to-pdf",
+      "description": "Transform plain text files into cleanly styled PDF documents.",
+      "sourceFormat": "txt",
+      "targetFormat": "pdf",
+      "enabled": true
+    }
+  ]
+}

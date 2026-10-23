@@ -1,0 +1,37 @@
+{
+  "name": "sa-platform",
+  "version": "1.0.0",
+  "description": "SA Online Document Converter Platform - Fullstack Node.js & React",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node backend/sa-node/src/server.js",
+    "server": "node backend/sa-node/src/server.js",
+    "client": "npm --prefix frontend/sa-web run dev",
+    "build": "npm --prefix frontend/sa-web run build",
+    "build:client": "npm --prefix frontend/sa-web run build",
+    "install:all": "npm install && npm --prefix frontend/sa-web install",
+    "test": "node backend/sa-node/test-server.js && node backend/sa-node/test-converters.js",
+    "dev": "node backend/sa-node/src/server.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "docx": "^9.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.8.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^4.10.38",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
