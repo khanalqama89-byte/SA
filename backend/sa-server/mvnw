@@ -1,6 +1,0 @@
-#!/bin/sh
-# ----------------------------------------------------------------------------
-# Maven Wrapper Startup Script for Unix/Linux/macOS
-# ----------------------------------------------------------------------------
-DIRNAME="$(cd "$(dirname "$0")" && pwd)"
-java -Dmaven.multiModuleProjectDirectory="$DIRNAME" -cp "$DIRNAME/.mvn/wrapper/maven-wrapper.jar" org.apache.maven.wrapper.MavenWrapperMain "$@"
