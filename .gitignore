@@ -39,6 +39,7 @@ logs/
 *.log
 temp/
 
-# Environment files
+# Environment & Data files
 .env
 .env.production
+database/sa_store.json
