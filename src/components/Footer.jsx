@@ -36,7 +36,7 @@ export default function Footer() {
                 SA
               </div>
               <span style={{ color: 'white', fontWeight: 800, fontSize: '1.25rem', fontFamily: 'var(--font-display)' }}>
-                SA Platform
+                Aalq Converter
               </span>
             </div>
             <p style={{ fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.25rem' }}>
@@ -105,7 +105,7 @@ export default function Footer() {
           gap: '1rem'
         }}>
           <div>
-            © {new Date().getFullYear()} SA Document Converter. All rights reserved.
+            © {new Date().getFullYear()} Aalq Converter (aalq). All rights reserved.
           </div>
           <div style={{ display: 'flex', gap: '1.5rem' }}>
             <Link to="/tools" style={{ color: '#cbd5e1' }}>Tools Directory</Link>

@@ -140,7 +140,7 @@ export default function Home() {
           </h1>
 
           <p className="sa-subtitle" style={{ marginBottom: '2.5rem' }}>
-            Transform PDF, Word, images, and text with zero layout loss. Engineered with high-speed Java pipelines so your 1-page resumes, tables, and fonts stay exact.
+            Transform PDF, Word, images, and text with <strong>Aalq Converter</strong> (aalq) — engineered with high-speed processing so your documents, resumes, and fonts stay exact.
           </p>
 
           {/* Search Box */}

@@ -64,7 +64,7 @@ export default function Navbar() {
               color: '#0f172a',
               lineHeight: 1.1
             }}>
-              SA<span style={{ color: 'var(--primary)' }}>.tools</span>
+              Aalq<span style={{ color: 'var(--primary)' }}> Converter</span>
             </div>
             <div style={{
               fontSize: '0.68rem',
