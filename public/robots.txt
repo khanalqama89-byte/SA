@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://aalqconverter.com/sitemap.xml
+Sitemap: https://aalqconverter.shop/sitemap.xml
