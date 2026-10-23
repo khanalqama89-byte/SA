@@ -7,8 +7,8 @@
     "start": "node backend/sa-node/src/server.js",
     "server": "node backend/sa-node/src/server.js",
     "client": "npm --prefix frontend/sa-web run dev",
-    "build": "npm --prefix frontend/sa-web run build",
-    "build:client": "npm --prefix frontend/sa-web run build",
+    "build": "npm --prefix frontend/sa-web install && npm --prefix frontend/sa-web run build",
+    "build:client": "npm --prefix frontend/sa-web install && npm --prefix frontend/sa-web run build",
     "install:all": "npm install && npm --prefix frontend/sa-web install",
     "test": "node backend/sa-node/test-server.js && node backend/sa-node/test-converters.js",
     "dev": "node backend/sa-node/src/server.js"
