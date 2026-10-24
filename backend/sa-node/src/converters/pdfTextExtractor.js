@@ -3,7 +3,78 @@ const { PDFDocument } = require('pdf-lib');
 const pdfParse = require('pdf-parse');
 
 /**
- * Decode PDF hex strings <hex> or literal strings (str)
+ * Decode Adobe PostScript ASCII85 (Base85) data stream
+ */
+function decodeAscii85(input) {
+  const str = (typeof input === 'string' ? input : input.toString('latin1'))
+    .replace(/^<~|~>$/g, '')
+    .replace(/\s+/g, '');
+  const out = [];
+  let tuple = 0;
+  let count = 0;
+
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    if (c === 0x7A) { // 'z' representing four 0x00 bytes
+      if (count > 0) throw new Error('Unexpected z inside ascii85 block');
+      out.push(0, 0, 0, 0);
+    } else if (c >= 0x21 && c <= 0x75) { // '!' (33) through 'u' (117)
+      tuple = tuple * 85 + (c - 33);
+      count++;
+      if (count === 5) {
+        out.push(
+          (tuple >>> 24) & 0xff,
+          (tuple >>> 16) & 0xff,
+          (tuple >>> 8) & 0xff,
+          tuple & 0xff
+        );
+        tuple = 0;
+        count = 0;
+      }
+    }
+  }
+
+  if (count > 1) {
+    for (let j = count; j < 5; j++) tuple = tuple * 85 + 84;
+    for (let j = 0; j < count - 1; j++) out.push((tuple >>> (24 - j * 8)) & 0xff);
+  }
+
+  return Buffer.from(out);
+}
+
+/**
+ * Decompress raw stream bytes with support for chained filters (e.g. ASCII85 + Flate)
+ */
+function decompressStreamBytes(rawBytes, filterStr = '') {
+  let bytes = rawBytes;
+
+  // If stream is ASCII85-encoded
+  if (filterStr.includes('ASCII85') || (bytes.length > 5 && bytes[0] === 0x47 && bytes[1] === 0x62)) {
+    try {
+      bytes = decodeAscii85(bytes);
+    } catch (e) {}
+  }
+
+  // Decompress Flate (zlib)
+  try {
+    return zlib.inflateSync(bytes).toString('latin1');
+  } catch {
+    try {
+      return zlib.inflateRawSync(bytes).toString('latin1');
+    } catch {
+      // If direct inflate failed, check if ASCII85 decode reveals valid zlib stream
+      try {
+        const a85 = decodeAscii85(bytes);
+        return zlib.inflateSync(a85).toString('latin1');
+      } catch {
+        return bytes.toString('latin1');
+      }
+    }
+  }
+}
+
+/**
+ * Decode PDF hex strings <hex> or literal strings (str) with octal and character entity support
  */
 function decodePdfString(str) {
   if (!str) return '';
@@ -22,6 +93,10 @@ function decodePdfString(str) {
   }
   if (str.startsWith('(') && str.endsWith(')')) {
     return str.slice(1, -1)
+      .replace(/\\([0-7]{1,3})/g, (_, oct) => {
+        const code = parseInt(oct, 8);
+        return (code === 127 || code === 149) ? ' • ' : String.fromCharCode(code);
+      })
       .replace(/\\\(/g, '(')
       .replace(/\\\)/g, ')')
       .replace(/\\\\/g, '\\')
@@ -33,7 +108,7 @@ function decodePdfString(str) {
 
 /**
  * Parse uncompressed PDF content stream commands into structured text lines
- * Handles: TJ arrays (with kerning-based word spacing), Tj, ', ", T*, Td, TD, Tm
+ * Handles: TJ arrays (with kerning-based word spacing), Tj, ', ", T*, Td, TD, Tm, ET
  */
 function parseStreamLines(streamStr) {
   const lines = [];
@@ -43,7 +118,7 @@ function parseStreamLines(streamStr) {
     '\\[([\\s\\S]*?)\\]\\s*TJ|' +
     '(\\((?:\\\\.|[^)\\\\])*\\)|\\<[0-9a-fA-F\\s]+\\>)\\s*Tj|' +
     '(\\((?:\\\\.|[^)\\\\])*\\)|\\<[0-9a-fA-F\\s]+\\>)\\s*[\'\\"]|' +
-    'T\\*|' +
+    'T\\*|ET|' +
     '(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(?:Td|TD)|' +
     '(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+Tm',
     'g'
@@ -59,7 +134,7 @@ function parseStreamLines(streamStr) {
       while ((elem = elemRegex.exec(arrStr)) !== null) {
         if (elem[1] !== undefined) {
           const num = parseFloat(elem[1]);
-          // In PDF, a negative kerning shift of ~120-200 units corresponds to a word space
+          // Negative kerning shift of ~120-200 units corresponds to a word space
           if (num < -120 && currentLine && !currentLine.endsWith(' ')) {
             currentLine += ' ';
           }
@@ -70,13 +145,15 @@ function parseStreamLines(streamStr) {
     } else if (match[2] !== undefined) {
       // 2. Single Tj
       const text = decodePdfString(match[2]);
-      if (text) currentLine += text;
+      if (text) {
+        currentLine += (currentLine && !currentLine.endsWith(' ') ? ' ' : '') + text;
+      }
     } else if (match[3] !== undefined) {
       // 3. ' or " (moves to next line and prints text)
       if (currentLine.trim()) lines.push(currentLine.trim());
       currentLine = decodePdfString(match[3]);
-    } else if (match[0] === 'T*' || (match[4] !== undefined && parseFloat(match[5]) < -2)) {
-      // 4. T* or Td with negative vertical offset (line break)
+    } else if (match[0] === 'T*' || match[0] === 'ET' || (match[4] !== undefined && parseFloat(match[5]) < -2)) {
+      // 4. T*, ET, or Td with negative vertical offset (line break)
       if (currentLine.trim()) lines.push(currentLine.trim());
       currentLine = '';
     }
@@ -151,7 +228,7 @@ async function extractStructuredPdf(inputBuffer) {
     });
 
     const parsedText = (res.text || '').trim();
-    if (parsedText.length > 5) {
+    if (parsedText.length > 20) {
       fullText = parsedText;
       const rawPages = fullText.split(/\n\n--- Page Break ---\n\n|\f/);
       pages = rawPages.map((pt, idx) => {
@@ -178,11 +255,11 @@ async function extractStructuredPdf(inputBuffer) {
       });
     }
   } catch (err) {
-    // pdf-parse threw on certain object streams
+    // pdf-parse can throw on certain modern streams or when run in environments without dynamic worker paths
   }
 
-  // LAYER 2: Native pdf-lib stream decompression
-  if (!fullText || fullText.length < 5) {
+  // LAYER 2: Native pdf-lib stream decompression (handles ASCII85 + Flate + direct stream contents)
+  if (!fullText || fullText.length < 20) {
     try {
       const doc = await PDFDocument.load(inputBuffer, { ignoreEncryption: true });
       const pageCount = doc.getPageCount();
@@ -195,31 +272,26 @@ async function extractStructuredPdf(inputBuffer) {
         const contents = page.node.Contents();
         if (!contents) continue;
 
-        let refs = [];
+        let streamList = [];
         if (typeof contents.size === 'function') {
-          for (let i = 0; i < contents.size(); i++) refs.push(contents.get(i));
+          for (let i = 0; i < contents.size(); i++) {
+            const item = contents.get(i);
+            const lookedUp = doc.context.lookup(item) || item;
+            streamList.push(lookedUp);
+          }
         } else {
-          refs = [contents];
+          const lookedUp = doc.context.lookup(contents) || contents;
+          streamList.push(lookedUp);
         }
 
         const pageLines = [];
-        for (const r of refs) {
-          const streamObj = doc.context.lookup(r);
-          if (!streamObj || !streamObj.contents) continue;
-
-          let uncompressed;
-          const rawBytes = Buffer.from(streamObj.contents);
-          try {
-            uncompressed = zlib.inflateSync(rawBytes).toString('latin1');
-          } catch {
-            try {
-              uncompressed = zlib.inflateRawSync(rawBytes).toString('latin1');
-            } catch {
-              uncompressed = rawBytes.toString('latin1');
-            }
-          }
-
-          const lines = parseStreamLines(uncompressed);
+        for (const s of streamList) {
+          if (!s || !s.contents) continue;
+          const filter = s.dict ? s.dict.get(PDFDocument.PDFName ? PDFDocument.PDFName.of('Filter') : 'Filter') : null;
+          const filterStr = filter ? filter.toString() : '';
+          const rawBytes = Buffer.from(s.contents);
+          const decompressed = decompressStreamBytes(rawBytes, filterStr);
+          const lines = parseStreamLines(decompressed);
           if (lines.length) pageLines.push(...lines);
         }
 
@@ -256,8 +328,8 @@ async function extractStructuredPdf(inputBuffer) {
     }
   }
 
-  // LAYER 3: Standard pdf-parse fallback
-  if (!fullText || fullText.length < 5) {
+  // LAYER 3: Standard pdf-parse fallback (in case custom pagerender was the part that threw)
+  if (!fullText || fullText.length < 20) {
     try {
       const data = await pdfParse(inputBuffer);
       const raw = (data.text || '').replace(/\r\n/g, '\n').trim();

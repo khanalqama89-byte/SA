@@ -54,8 +54,17 @@ async function convertPdfToImage(inputBuffer, options = {}, outputFormat = 'jpg'
 
   // Strategy 1: Canvas rendering via @napi-rs/canvas if available
   try {
-    const { createCanvas } = require('@napi-rs/canvas');
-    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const { createCanvas, Path2D } = require('@napi-rs/canvas');
+    if (Path2D && !globalThis.Path2D) {
+      globalThis.Path2D = Path2D;
+    }
+
+    let pdfjsLib;
+    try {
+      pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+    } catch {
+      pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    }
 
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(inputBuffer),
@@ -156,26 +165,8 @@ async function convertPdfToImage(inputBuffer, options = {}, outputFormat = 'jpg'
       };
     }
 
-    // Strategy 3: Export single page document visuals
-    const sourceDoc = await PDFDocument.load(inputBuffer);
-    const totalPages = sourceDoc.getPageCount();
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    const bufferPromise = archiverToBuffer(archive);
-
-    for (let i = 0; i < totalPages; i++) {
-      const singleDoc = await PDFDocument.create();
-      const [copied] = await singleDoc.copyPages(sourceDoc, [i]);
-      singleDoc.addPage(copied);
-      const pageBytes = await singleDoc.save();
-      archive.append(Buffer.from(pageBytes), { name: `page-${i + 1}.pdf` });
-    }
-
-    await archive.finalize();
-    return {
-      buffer: await bufferPromise,
-      extension: '.zip',
-      mimeType: 'application/zip'
-    };
+    // Strategy 3: Informative error if canvas is unavailable and no embedded raster images exist
+    throw new Error('Image rendering requires canvas acceleration which is not supported for this document format on the server. Please convert via the interactive web tool.');
   }
 }
 

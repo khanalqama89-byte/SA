@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { conversionService } from '../services/conversionService';
+import { convertPdfToImagesClient } from '../services/clientPdfConverter';
 
 export function useConversion(toolSlug) {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -72,6 +73,34 @@ export function useConversion(toolSlug) {
           setProgress(currentProgress);
         }
       }, 350);
+
+      // High-Fidelity Client-Side Rendering for PDF to Image (guarantees crisp fonts and real JPEG/PNG files)
+      if (['pdf-to-jpg', 'pdf-to-png'].includes(toolSlug)) {
+        try {
+          const clientResult = await convertPdfToImagesClient(selectedFile, toolSlug, options);
+          if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+          setProgress(100);
+          setStatusMessage('Images generated successfully!');
+          setStage('COMPLETED');
+          const clientJobId = 'client_' + Date.now();
+          setJobId(clientJobId);
+          setOutputFileName(clientResult.outputFileName);
+          setResultData({
+            originalFileName: selectedFile.name,
+            originalSize: selectedFile.size,
+            outputFileName: clientResult.outputFileName,
+            targetFormat: clientResult.targetFormat,
+            sourceFormat: 'pdf',
+            size: clientResult.size,
+            mimeType: clientResult.mimeType,
+            fileBase64: clientResult.fileBase64,
+            downloadUrl: '#'
+          });
+          return;
+        } catch (clientErr) {
+          console.warn('Client-side rendering fallback to server:', clientErr);
+        }
+      }
 
       const resData = await conversionService.startDirectConversion(toolSlug, selectedFile, options);
 
