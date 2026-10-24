@@ -3,13 +3,28 @@ import { useParams, Link } from 'react-router-dom';
 import { toolService } from '../services/toolService';
 import { useConversion } from '../hooks/useConversion';
 import FileUploader from '../components/FileUploader';
-import FilePreview from '../components/FilePreview';
+import FileSelectedHeader from '../components/FileSelectedHeader';
+import DocumentPreview from '../components/DocumentPreview';
+import ConversionOptions from '../components/ConversionOptions';
+import ConversionResult from '../components/ConversionResult';
+import ConversionFlowSteps from '../components/ConversionFlowSteps';
 import ProgressBar from '../components/ProgressBar';
-import DownloadButton from '../components/DownloadButton';
-import { ArrowLeft, Sparkles, SlidersHorizontal, AlertCircle, ShieldCheck, Zap, FileCheck2, Clock } from 'lucide-react';
+import {
+  ArrowLeft,
+  Sparkles,
+  AlertCircle,
+  ShieldCheck,
+  Zap,
+  FileCheck2,
+  Clock,
+  Layers,
+  CheckCircle2,
+  Lock
+} from 'lucide-react';
 
 export default function ToolDetailPage() {
   const { slug } = useParams();
+
   const getInitialTool = (s) => {
     if (!s) return null;
     const name = s.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
@@ -27,13 +42,21 @@ export default function ToolDetailPage() {
   const [tool, setTool] = useState(() => getInitialTool(slug));
   const [loadingTool, setLoadingTool] = useState(false);
 
-  // Tool specific options
+  // Conversion options state
   const [options, setOptions] = useState({
     compressionLevel: 'MEDIUM',
     rotation: '90',
     pageRange: '',
     deletePages: '',
-    dpi: '150'
+    dpi: '150',
+    pageSize: 'A4',
+    orientation: 'auto',
+    margin: 'standard',
+    fitMode: 'fit',
+    font: 'Helvetica',
+    fontSize: '11',
+    lineSpacing: '1.5',
+    layoutMode: 'FLOWING'
   });
 
   const {
@@ -44,7 +67,9 @@ export default function ToolDetailPage() {
     errorMessage,
     jobId,
     outputFileName,
+    resultData,
     selectFile,
+    replaceFile,
     removeFile,
     startProcess,
     downloadOutput,
@@ -59,14 +84,14 @@ export default function ToolDetailPage() {
       setTool(initial);
     }
     if (initial?.name) {
-      document.title = `${initial.name} — Convert Online Free | SA`;
+      document.title = `${initial.name} — Convert Online Free | Aalq Converter`;
     }
 
     toolService.getTool(slug)
       .then(data => {
         if (data && data.name) {
           setTool(data);
-          document.title = `${data.name} — Convert Online Free | SA`;
+          document.title = `${data.name} — Convert Online Free | Aalq Converter`;
         }
       })
       .catch(() => {})
@@ -77,7 +102,7 @@ export default function ToolDetailPage() {
     try {
       startProcess(options);
     } catch (e) {
-      console.error("Failed to start process:", e);
+      console.error("Failed to start conversion:", e);
     }
   };
 
@@ -89,11 +114,22 @@ export default function ToolDetailPage() {
     targetFormat: 'docx'
   };
 
+  // Compute step number for the flow indicator
+  const currentStep = stage === 'COMPLETED'
+    ? 4
+    : stage === 'CONVERTING'
+    ? 3
+    : stage === 'PREVIEW'
+    ? 2
+    : 1;
+
+  const targetFormatUpper = (safeTool.targetFormat || 'Document').toUpperCase();
+
   return (
     <div className="sa-page">
       <div className="sa-ambient-bg" />
 
-      <div className="sa-container" style={{ maxWidth: '880px' }}>
+      <div className="sa-container" style={{ maxWidth: '920px' }}>
         {/* Navigation Breadcrumb */}
         <div style={{ marginBottom: '1.75rem' }}>
           <Link
@@ -105,20 +141,21 @@ export default function ToolDetailPage() {
               fontSize: '0.92rem',
               color: 'var(--text-muted)',
               fontWeight: 600,
-              padding: '0.4rem 0.85rem',
+              padding: '0.45rem 0.95rem',
               borderRadius: 'var(--radius-md)',
               background: 'white',
               border: '1px solid var(--border)',
-              boxShadow: 'var(--shadow-xs)'
+              boxShadow: 'var(--shadow-xs)',
+              textDecoration: 'none'
             }}
           >
             <ArrowLeft size={16} />
-            Back to All Tools
+            <span>Back to All Tools</span>
           </Link>
         </div>
 
         {/* Tool Header */}
-        <div style={{ textAlign: 'center', marginBottom: '2.75rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -136,14 +173,14 @@ export default function ToolDetailPage() {
             <span>{safeTool.sourceFormat} &rarr; {safeTool.targetFormat}</span>
           </div>
 
-          <h1 className="sa-title-hero" style={{ fontSize: 'clamp(2.2rem, 4vw, 3rem)', marginBottom: '0.85rem' }}>
+          <h1 className="sa-title-hero" style={{ fontSize: 'clamp(2.2rem, 4.2vw, 3.1rem)', marginBottom: '0.85rem' }}>
             {safeTool.name}
           </h1>
 
           <p style={{
             color: 'var(--text-muted)',
             fontSize: '1.1rem',
-            maxWidth: '640px',
+            maxWidth: '650px',
             margin: '0 auto',
             lineHeight: 1.6
           }}>
@@ -151,36 +188,60 @@ export default function ToolDetailPage() {
           </p>
         </div>
 
-        {/* Main Work Area */}
+        {/* Professional Step Flow Indicator */}
+        <ConversionFlowSteps currentStep={currentStep} />
+
+        {/* Main Interactive Workspace Area */}
         <div style={{ marginBottom: '4rem' }}>
           {stage === 'COMPLETED' ? (
-            <DownloadButton
+            /* STEP 6 & RESULT: Completed View */
+            <ConversionResult
               jobId={jobId}
-              fileName={outputFileName}
+              originalFileName={resultData?.originalFileName || selectedFile?.name}
+              originalSize={resultData?.originalSize || selectedFile?.size}
+              outputFileName={outputFileName}
               targetFormat={safeTool.targetFormat}
+              fileSize={resultData?.size}
+              fileBase64={resultData?.fileBase64}
+              mimeType={resultData?.mimeType}
               onDownload={downloadOutput}
               onReset={reset}
             />
-          ) : stage === 'UPLOADING' || stage === 'CONVERTING' ? (
+          ) : stage === 'CONVERTING' ? (
+            /* STEP 5: Converting & Processing State */
             <div style={{
-              background: 'white',
+              background: '#ffffff',
               borderRadius: 'var(--radius-xl)',
-              padding: '2.5rem',
+              padding: '3rem 2rem',
               border: '1px solid var(--border)',
-              boxShadow: 'var(--shadow-md)'
+              boxShadow: 'var(--shadow-md)',
+              textAlign: 'center'
             }}>
               <ProgressBar
                 progress={progress}
                 statusText={statusMessage}
                 error={false}
               />
+              <div style={{
+                marginTop: '2rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                fontSize: '0.85rem',
+                color: 'var(--text-muted)'
+              }}>
+                <Lock size={15} color="var(--primary)" />
+                <span>Processing in secure isolated sandbox • 100% confidential</span>
+              </div>
             </div>
           ) : stage === 'FAILED' ? (
+            /* Error State */
             <div style={{
-              background: 'white',
+              background: '#ffffff',
               border: '1px solid var(--danger)',
               borderRadius: 'var(--radius-xl)',
-              padding: '2.75rem 2rem',
+              padding: '3rem 2rem',
               textAlign: 'center',
               boxShadow: 'var(--shadow-md)'
             }}>
@@ -198,115 +259,102 @@ export default function ToolDetailPage() {
                 <AlertCircle size={34} />
               </div>
               <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--danger)', marginBottom: '0.5rem' }}>
-                Conversion Failed
+                Conversion Notice
               </h3>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1.75rem', maxWidth: '480px', margin: '0 auto 1.75rem' }}>
-                {errorMessage || 'An error occurred while converting the file. Please ensure the file is not corrupted or password-protected.'}
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1.75rem', maxWidth: '520px', margin: '0 auto 1.75rem', lineHeight: 1.55 }}>
+                {errorMessage || 'Unable to convert this document. Please check that the file is not corrupted or password-protected, then try again.'}
               </p>
-              <button onClick={reset} className="sa-btn sa-btn-primary">
-                Try Again
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem' }}>
+                <button onClick={reset} className="sa-btn sa-btn-primary">
+                  Try Another File
+                </button>
+              </div>
             </div>
-          ) : !selectedFile ? (
+          ) : !selectedFile || stage === 'IDLE' ? (
+            /* STEP 1: Upload File */
             <FileUploader
               acceptedFormat={safeTool.sourceFormat}
               toolName={safeTool.name}
               onFileSelected={selectFile}
             />
           ) : (
+            /* STEP 2, 3, 4: Preview, Options, & Confirmation */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <FilePreview
+              {/* File Info Bar with Replace / Remove */}
+              <FileSelectedHeader
                 file={selectedFile}
+                onReplace={replaceFile}
                 onRemove={removeFile}
               />
 
-              {/* Tool Specific Options Card */}
-              <div className="sa-card" style={{ padding: '2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '1.5rem' }}>
-                  <SlidersHorizontal size={20} color="var(--primary)" />
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800 }}>Conversion Settings</h3>
-                </div>
+              {/* Document Visual Preview */}
+              <DocumentPreview
+                file={selectedFile}
+                isOutput={false}
+              />
 
-                {safeTool.slug === 'compress-pdf' && (
-                  <div className="sa-input-group">
-                    <label className="sa-label">Compression Level</label>
-                    <select
-                      value={options.compressionLevel}
-                      onChange={(e) => setOptions({ ...options, compressionLevel: e.target.value })}
-                      className="sa-select"
-                    >
-                      <option value="MEDIUM">Recommended (Balanced Quality & Size)</option>
-                      <option value="HIGH">Extreme (Maximum compression, lowest size)</option>
-                      <option value="LOW">Low (Maximum visual quality, subtle compression)</option>
-                    </select>
-                  </div>
-                )}
+              {/* Conversion Settings / Options */}
+              <ConversionOptions
+                toolSlug={safeTool.slug}
+                options={options}
+                onChange={setOptions}
+                targetFormat={safeTool.targetFormat}
+              />
 
-                {safeTool.slug === 'rotate-pdf' && (
-                  <div className="sa-input-group">
-                    <label className="sa-label">Rotation Angle</label>
-                    <select
-                      value={options.rotation}
-                      onChange={(e) => setOptions({ ...options, rotation: e.target.value })}
-                      className="sa-select"
-                    >
-                      <option value="90">90° Clockwise</option>
-                      <option value="180">180° Flip Upside-Down</option>
-                      <option value="270">270° Counter-Clockwise</option>
-                    </select>
-                  </div>
-                )}
-
-                {safeTool.slug === 'extract-pdf-pages' && (
-                  <div className="sa-input-group">
-                    <label className="sa-label">Pages to Extract</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1-3, 5, 8"
-                      value={options.pageRange}
-                      onChange={(e) => setOptions({ ...options, pageRange: e.target.value })}
-                      className="sa-input"
-                    />
-                    <small style={{ color: 'var(--text-subtle)', fontSize: '0.8rem' }}>Enter page numbers or ranges separated by commas.</small>
-                  </div>
-                )}
-
-                {safeTool.slug === 'delete-pdf-pages' && (
-                  <div className="sa-input-group">
-                    <label className="sa-label">Pages to Remove</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 2, 4, 6"
-                      value={options.deletePages}
-                      onChange={(e) => setOptions({ ...options, deletePages: e.target.value })}
-                      className="sa-input"
-                    />
-                    <small style={{ color: 'var(--text-subtle)', fontSize: '0.8rem' }}>Designate unwanted pages to strip permanently.</small>
-                  </div>
-                )}
-
-                {(safeTool.slug === 'pdf-to-jpg' || safeTool.slug === 'pdf-to-png') && (
-                  <div className="sa-input-group">
-                    <label className="sa-label">Output Resolution (DPI)</label>
-                    <select
-                      value={options.dpi}
-                      onChange={(e) => setOptions({ ...options, dpi: e.target.value })}
-                      className="sa-select"
-                    >
-                      <option value="150">150 DPI (Standard Web Quality)</option>
-                      <option value="300">300 DPI (High Print Resolution)</option>
-                    </select>
-                  </div>
-                )}
-
+              {/* Step 4 Confirmation Button */}
+              <div style={{
+                background: '#ffffff',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-lg)',
+                padding: '1.75rem',
+                boxShadow: 'var(--shadow-sm)',
+                textAlign: 'center'
+              }}>
                 <button
                   onClick={handleStartConversion}
                   className="sa-btn sa-btn-primary sa-btn-lg"
-                  style={{ width: '100%', marginTop: '0.75rem', fontSize: '1.1rem' }}
+                  style={{
+                    width: '100%',
+                    fontSize: '1.15rem',
+                    fontWeight: 800,
+                    padding: '1.15rem 2rem',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: '0 10px 28px var(--primary-glow)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.75rem'
+                  }}
                 >
-                  <Sparkles size={20} />
-                  Convert to {(safeTool.targetFormat || 'Document').toUpperCase()} Now
+                  <Sparkles size={22} />
+                  <span>Convert to {targetFormatUpper} Now</span>
                 </button>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '1.25rem',
+                  marginTop: '1rem',
+                  fontSize: '0.82rem',
+                  color: 'var(--text-subtle)',
+                  fontWeight: 600,
+                  flexWrap: 'wrap'
+                }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <CheckCircle2 size={15} color="#10b981" />
+                    High-Fidelity Document Layout
+                  </span>
+                  <span>•</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <CheckCircle2 size={15} color="#10b981" />
+                    Clean & Editable Output
+                  </span>
+                  <span>•</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <CheckCircle2 size={15} color="#10b981" />
+                    Instant Cloud Processing
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -339,9 +387,9 @@ export default function ToolDetailPage() {
                 flexShrink: 0
               }}>1</div>
               <div>
-                <h4 style={{ fontWeight: 800, marginBottom: '0.35rem', fontSize: '1rem' }}>Upload Document</h4>
+                <h4 style={{ fontWeight: 800, marginBottom: '0.35rem', fontSize: '1rem' }}>Upload & Preview</h4>
                 <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Drag & drop or select your {(safeTool.sourceFormat || 'File').toUpperCase()} file from your phone or PC.
+                  Select your {(safeTool.sourceFormat || 'File').toUpperCase()} document. Review pages, layout, and adjust settings before converting.
                 </p>
               </div>
             </div>
@@ -362,7 +410,7 @@ export default function ToolDetailPage() {
               <div>
                 <h4 style={{ fontWeight: 800, marginBottom: '0.35rem', fontSize: '1rem' }}>Instant Engine</h4>
                 <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Click Convert. Our high-fidelity Java pipeline processes your file in sub-seconds.
+                  Click Convert to {(safeTool.targetFormat || 'Document').toUpperCase()}. Our high-fidelity pipeline reconstructs fonts, tables, and images accurately.
                 </p>
               </div>
             </div>
@@ -383,7 +431,7 @@ export default function ToolDetailPage() {
               <div>
                 <h4 style={{ fontWeight: 800, marginBottom: '0.35rem', fontSize: '1rem' }}>Download Result</h4>
                 <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Save your converted {(safeTool.targetFormat || 'Document').toUpperCase()} file directly without extra prompts.
+                  Inspect the converted document preview and save your completed {(safeTool.targetFormat || 'Document').toUpperCase()} file directly.
                 </p>
               </div>
             </div>
@@ -398,10 +446,10 @@ export default function ToolDetailPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div style={{ background: '#f8fafc', padding: '1.25rem 1.5rem', borderRadius: 'var(--radius-md)' }}>
               <h4 style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
-                Does {safeTool.name} alter the layout or page count of my file?
+                Does {safeTool.name} preserve headings, tables, and page margins?
               </h4>
               <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
-                No! Our engine is specifically calibrated to preserve 2-column resumes, table structures, exact font weights, and compact margins so a 1-page document remains 1 page.
+                Yes! Our high-fidelity conversion pipeline analyzes spatial text coordinates, font weights, and table structures so the resulting document looks professionally finished and properly structured.
               </p>
             </div>
             <div style={{ background: '#f8fafc', padding: '1.25rem 1.5rem', borderRadius: 'var(--radius-md)' }}>
@@ -409,7 +457,7 @@ export default function ToolDetailPage() {
                 How long are my files stored on the server?
               </h4>
               <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.55 }}>
-                Both uploaded and generated files are automatically and permanently deleted from our servers within 24 hours. No data is retained.
+                Both uploaded and generated documents are automatically and permanently purged from server memory within 24 hours. Your documents are never shared or stored long-term.
               </p>
             </div>
           </div>

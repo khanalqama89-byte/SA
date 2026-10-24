@@ -8,9 +8,10 @@
     "client": "vite",
     "build": "vite build",
     "start": "node backend/sa-node/src/server.js",
-    "test": "node backend/sa-node/test-server.js && node backend/sa-node/test-converters.js"
+    "test": "node backend/sa-node/test-server.js && node backend/sa-node/test-converters.js && node backend/sa-node/test-quality.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.13",
     "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

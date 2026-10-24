@@ -486,3 +486,56 @@ button, input, select, textarea {
     width: 100%;
   }
 }
+
+/* DOCX Rendered Preview Styling */
+.sa-docx-preview-content {
+  font-family: var(--font-body);
+  color: #1e293b;
+  line-height: 1.6;
+}
+
+.sa-docx-preview-content h1,
+.sa-docx-preview-content h2,
+.sa-docx-preview-content h3 {
+  color: #0f172a;
+  margin-top: 1.25em;
+  margin-bottom: 0.4em;
+  font-weight: 700;
+}
+
+.sa-docx-preview-content p {
+  margin-bottom: 0.75em;
+}
+
+.sa-docx-preview-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.88rem;
+}
+
+.sa-docx-preview-content th,
+.sa-docx-preview-content td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.sa-docx-preview-content th {
+  background-color: #f8fafc;
+  font-weight: 700;
+}
+
+.sa-docx-preview-content ul,
+.sa-docx-preview-content ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.75em;
+}
+
+.sa-docx-preview-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  margin: 0.5rem 0;
+}
+

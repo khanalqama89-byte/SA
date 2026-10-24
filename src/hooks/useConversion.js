@@ -1,44 +1,51 @@
 import { useState, useRef, useEffect } from 'react';
-import { fileService } from '../services/fileService';
 import { conversionService } from '../services/conversionService';
 
 export function useConversion(toolSlug) {
   const [selectedFile, setSelectedFile] = useState(null);
-  const [stage, setStage] = useState('IDLE'); // 'IDLE' | 'UPLOADING' | 'CONVERTING' | 'COMPLETED' | 'FAILED'
+  // 'IDLE' | 'PREVIEW' | 'CONVERTING' | 'COMPLETED' | 'FAILED'
+  const [stage, setStage] = useState('IDLE');
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [outputFileName, setOutputFileName] = useState('');
-  const [cachedResult, setCachedResult] = useState(null); // { base64, mimeType }
+  const [resultData, setResultData] = useState(null);
 
   const pollingRef = useRef(null);
+  const progressTimerRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     };
   }, []);
 
   const selectFile = (file) => {
     setSelectedFile(file);
-    setStage('IDLE');
+    setStage('PREVIEW');
     setProgress(0);
     setErrorMessage(null);
     setJobId(null);
     setOutputFileName('');
-    setCachedResult(null);
+    setResultData(null);
+  };
+
+  const replaceFile = (file) => {
+    selectFile(file);
   };
 
   const removeFile = () => {
     if (pollingRef.current) clearInterval(pollingRef.current);
+    if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     setSelectedFile(null);
     setStage('IDLE');
     setProgress(0);
     setErrorMessage(null);
     setJobId(null);
     setOutputFileName('');
-    setCachedResult(null);
+    setResultData(null);
   };
 
   const startProcess = async (options = {}) => {
@@ -47,36 +54,61 @@ export function useConversion(toolSlug) {
     try {
       setErrorMessage(null);
       setStage('CONVERTING');
-      setStatusMessage('Sending document to SA Engine...');
-      setProgress(25);
+      setProgress(15);
+      setStatusMessage('Preparing your file...');
 
-      // Perform direct conversion (instant serverless roundtrip)
+      // Dynamic progress messages to reflect active processing
+      let currentProgress = 20;
+      progressTimerRef.current = setInterval(() => {
+        currentProgress += 10;
+        if (currentProgress === 35) {
+          setStatusMessage('Analyzing document structure...');
+        } else if (currentProgress === 65) {
+          setStatusMessage('Converting layout and formatting...');
+        } else if (currentProgress === 85) {
+          setStatusMessage('Finalizing your document...');
+        }
+        if (currentProgress < 90) {
+          setProgress(currentProgress);
+        }
+      }, 350);
+
       const resData = await conversionService.startDirectConversion(toolSlug, selectedFile, options);
 
-      setProgress(85);
-      setStatusMessage('Processing completed!');
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
 
       if (resData && resData.status === 'COMPLETED') {
         setProgress(100);
-        setStage('COMPLETED');
         setStatusMessage('Conversion completed successfully!');
+        setStage('COMPLETED');
         setJobId(resData.jobId);
         setOutputFileName(resData.outputFileName || 'converted_document');
-        setCachedResult({
-          base64: resData.fileBase64,
-          mimeType: resData.mimeType
+        setResultData({
+          originalFileName: resData.originalFileName || selectedFile.name,
+          originalSize: resData.originalSize || selectedFile.size,
+          outputFileName: resData.outputFileName,
+          targetFormat: resData.targetFormat,
+          sourceFormat: resData.sourceFormat,
+          size: resData.size,
+          mimeType: resData.mimeType,
+          fileBase64: resData.fileBase64,
+          downloadUrl: resData.downloadUrl
         });
       } else if (resData && resData.jobId) {
-        // Fallback in case async queue is returned
         setJobId(resData.jobId);
-        setStatusMessage('Converting document with SA Engine...');
+        setStatusMessage('Converting document...');
         pollJobStatus(resData.jobId);
       } else {
         throw new Error('Unexpected response received from converter engine.');
       }
     } catch (err) {
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
       setStage('FAILED');
-      setErrorMessage(err.message || 'An unexpected error occurred during processing.');
+      setErrorMessage(
+        err.message?.includes('password')
+          ? 'This file appears to be password-protected. Please unlock it and try again.'
+          : err.message || 'Unable to convert this file. Please check format and try another document.'
+      );
     }
   };
 
@@ -88,26 +120,30 @@ export function useConversion(toolSlug) {
         const statusData = await conversionService.getJobStatus(targetJobId);
 
         if (statusData.status === 'PROCESSING') {
-          const mappedProgress = Math.max(50, Math.min(95, statusData.progress || 60));
-          setProgress(mappedProgress);
-          setStatusMessage(`Converting document... (${mappedProgress}%)`);
+          setStatusMessage('Finalizing your document...');
         } else if (statusData.status === 'COMPLETED') {
           clearInterval(pollingRef.current);
           setProgress(100);
           setStage('COMPLETED');
           setStatusMessage('Conversion completed successfully!');
           setOutputFileName(statusData.outputFileName || 'converted_document');
+          setResultData({
+            outputFileName: statusData.outputFileName,
+            targetFormat: toolSlug.split('-').pop(),
+            originalFileName: selectedFile?.name,
+            originalSize: selectedFile?.size
+          });
         } else if (statusData.status === 'FAILED') {
           clearInterval(pollingRef.current);
           setStage('FAILED');
-          setErrorMessage(statusData.errorMessage || 'Conversion failed.');
+          setErrorMessage(statusData.errorMessage || 'Conversion failed. Please try another file.');
         } else if (statusData.status === 'CANCELLED') {
           clearInterval(pollingRef.current);
           setStage('FAILED');
-          setErrorMessage('Conversion job was cancelled.');
+          setErrorMessage('Conversion was cancelled.');
         }
       } catch (pollErr) {
-        // Keep polling briefly in case of temporary blip
+        // Keep polling briefly in case of temporary latency
       }
     }, 1000);
   };
@@ -117,8 +153,8 @@ export function useConversion(toolSlug) {
     await conversionService.downloadResult(
       jobId,
       outputFileName,
-      cachedResult?.base64,
-      cachedResult?.mimeType
+      resultData?.fileBase64,
+      resultData?.mimeType
     );
   };
 
@@ -134,7 +170,9 @@ export function useConversion(toolSlug) {
     errorMessage,
     jobId,
     outputFileName,
+    resultData,
     selectFile,
+    replaceFile,
     removeFile,
     startProcess,
     downloadOutput,
