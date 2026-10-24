@@ -1,307 +1,289 @@
-const path = require('path');
-const fs = require('fs');
+const zlib = require('zlib');
+const { PDFDocument } = require('pdf-lib');
+const pdfParse = require('pdf-parse');
 
-const fontsDir = path.resolve(__dirname, '../../../../node_modules/pdfjs-dist/standard_fonts');
-
-class NodeStandardFontDataFactory {
-  async fetch({ filename }) {
-    const filePath = path.join(fontsDir, filename);
-    if (fs.existsSync(filePath)) {
-      return new Uint8Array(fs.readFileSync(filePath));
+/**
+ * Decode PDF hex strings <hex> or literal strings (str)
+ */
+function decodePdfString(str) {
+  if (!str) return '';
+  str = str.trim();
+  if (str.startsWith('<') && str.endsWith('>')) {
+    const hex = str.slice(1, -1).replace(/\s+/g, '');
+    if (!hex) return '';
+    try {
+      if (hex.length >= 4 && (hex.startsWith('feff') || hex.startsWith('FEFF'))) {
+        return Buffer.from(hex, 'hex').swap16().toString('utf16le');
+      }
+      return Buffer.from(hex, 'hex').toString('utf-8');
+    } catch {
+      return '';
     }
-    return new Uint8Array();
   }
+  if (str.startsWith('(') && str.endsWith(')')) {
+    return str.slice(1, -1)
+      .replace(/\\\(/g, '(')
+      .replace(/\\\)/g, ')')
+      .replace(/\\\\/g, '\\')
+      .replace(/\\r/g, '\r')
+      .replace(/\\n/g, '\n');
+  }
+  return str;
 }
 
 /**
- * Extract rich structured text and layout data from PDF buffer
+ * Parse uncompressed PDF content stream commands into structured text lines
+ * Handles: TJ arrays (with kerning-based word spacing), Tj, ', ", T*, Td, TD, Tm
  */
-async function extractStructuredPdf(inputBuffer) {
-  let pdfjsLib;
-  try {
-    pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  } catch (err) {
-    console.warn('pdfjs-dist import error:', err.message);
-    return extractFallbackText(inputBuffer);
-  }
+function parseStreamLines(streamStr) {
+  const lines = [];
+  let currentLine = '';
 
-  try {
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(inputBuffer),
-      StandardFontDataFactory: NodeStandardFontDataFactory,
-      useSystemFonts: true,
-      disableFontFace: true
-    });
+  const tokenRegex = new RegExp(
+    '\\[([\\s\\S]*?)\\]\\s*TJ|' +
+    '(\\((?:\\\\.|[^)\\\\])*\\)|\\<[0-9a-fA-F\\s]+\\>)\\s*Tj|' +
+    '(\\((?:\\\\.|[^)\\\\])*\\)|\\<[0-9a-fA-F\\s]+\\>)\\s*[\'\\"]|' +
+    'T\\*|' +
+    '(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(?:Td|TD)|' +
+    '(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+(-?[\\d\\.]+)\\s+Tm',
+    'g'
+  );
 
-    const pdfDoc = await loadingTask.promise;
-    const numPages = pdfDoc.numPages;
-    const pages = [];
-    const textLines = [];
-
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const page = await pdfDoc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.0 });
-      const pageWidth = viewport.width;
-      const pageHeight = viewport.height;
-
-      const content = await page.getTextContent();
-      const rawItems = content.items || [];
-
-      // Filter and normalize items
-      const items = [];
-      for (const it of rawItems) {
-        if (!it.str && !it.hasEOL) continue;
-        const tx = it.transform ? it.transform[4] : 0;
-        const ty = it.transform ? it.transform[5] : 0;
-        const fontSize = it.transform ? Math.abs(it.transform[0]) || Math.abs(it.transform[3]) || it.height || 10 : 10;
-        const fontName = it.fontName || '';
-        const isBold = /bold|black|heavy|700|800|900/i.test(fontName);
-        const isItalic = /italic|oblique/i.test(fontName);
-
-        items.push({
-          str: it.str || '',
-          x: tx,
-          y: ty,
-          width: it.width || 0,
-          height: it.height || fontSize,
-          fontSize,
-          fontName,
-          isBold,
-          isItalic,
-          hasEOL: it.hasEOL || false
-        });
-      }
-
-      if (items.length === 0) {
-        pages.push({
-          pageNum,
-          width: pageWidth,
-          height: pageHeight,
-          lines: [],
-          paragraphs: []
-        });
-        continue;
-      }
-
-      // Group into lines by Y coordinate (PDF origin is bottom-left, so higher Y is higher on page)
-      // Sort items by Y descending (top to bottom)
-      items.sort((a, b) => b.y - a.y || a.x - b.x);
-
-      const clusteredLines = [];
-      let currentLine = [];
-      let currentLineY = null;
-      let currentLineHeight = 10;
-
-      for (const item of items) {
-        if (currentLineY === null) {
-          currentLine = [item];
-          currentLineY = item.y;
-          currentLineHeight = item.fontSize;
-        } else {
-          // If within line tolerance
-          const tolerance = Math.max(currentLineHeight * 0.45, 3.5);
-          if (Math.abs(item.y - currentLineY) <= tolerance) {
-            currentLine.push(item);
-            currentLineHeight = Math.max(currentLineHeight, item.fontSize);
-          } else {
-            clusteredLines.push(currentLine);
-            currentLine = [item];
-            currentLineY = item.y;
-            currentLineHeight = item.fontSize;
+  let match;
+  while ((match = tokenRegex.exec(streamStr)) !== null) {
+    if (match[1] !== undefined) {
+      // 1. TJ Array: elements are string literals, hex strings, or kerning numbers
+      const arrStr = match[1];
+      const elemRegex = new RegExp('\\((?:\\\\.|[^)\\\\])*\\)|\\<[0-9a-fA-F\\s]+\\>|(-?[\\d\\.]+)', 'g');
+      let elem;
+      while ((elem = elemRegex.exec(arrStr)) !== null) {
+        if (elem[1] !== undefined) {
+          const num = parseFloat(elem[1]);
+          // In PDF, a negative kerning shift of ~120-200 units corresponds to a word space
+          if (num < -120 && currentLine && !currentLine.endsWith(' ')) {
+            currentLine += ' ';
           }
+        } else {
+          currentLine += decodePdfString(elem[0]);
         }
       }
-      if (currentLine.length > 0) {
-        clusteredLines.push(currentLine);
+    } else if (match[2] !== undefined) {
+      // 2. Single Tj
+      const text = decodePdfString(match[2]);
+      if (text) currentLine += text;
+    } else if (match[3] !== undefined) {
+      // 3. ' or " (moves to next line and prints text)
+      if (currentLine.trim()) lines.push(currentLine.trim());
+      currentLine = decodePdfString(match[3]);
+    } else if (match[0] === 'T*' || (match[4] !== undefined && parseFloat(match[5]) < -2)) {
+      // 4. T* or Td with negative vertical offset (line break)
+      if (currentLine.trim()) lines.push(currentLine.trim());
+      currentLine = '';
+    }
+  }
+
+  if (currentLine.trim()) {
+    lines.push(currentLine.trim());
+  }
+
+  return lines;
+}
+
+/**
+ * Robust Cross-Platform Multi-Layer PDF Text & Layout Extractor
+ * 100% pure JavaScript, zero native binary dependencies, runs identically on Vercel Lambda and Local.
+ */
+async function extractStructuredPdf(inputBuffer) {
+  let fullText = '';
+  let pages = [];
+
+  // LAYER 1: pdf-parse with custom spatial pagerender
+  try {
+    const res = await pdfParse(inputBuffer, {
+      pagerender: (pageData) => {
+        return pageData.getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false })
+          .then(tc => {
+            const items = tc.items || [];
+            if (!items.length) return '';
+
+            // Sort items top-to-bottom (Y descending), then left-to-right (X ascending)
+            items.sort((a, b) => b.transform[5] - a.transform[5] || a.transform[4] - b.transform[4]);
+
+            let pageOut = '';
+            let lastY = null;
+            let lastX = null;
+            let lastWidth = 0;
+
+            for (const it of items) {
+              const str = it.str;
+              if (!str && !it.hasEOL) continue;
+
+              const x = it.transform[4];
+              const y = it.transform[5];
+              const fontSize = Math.abs(it.transform[0]) || Math.abs(it.transform[3]) || it.height || 10;
+
+              if (lastY === null) {
+                pageOut += str;
+              } else {
+                const yDiff = lastY - y;
+                if (Math.abs(yDiff) > fontSize * 0.45) {
+                  // Vertical shift -> check for paragraph vs single line break
+                  pageOut += (yDiff > fontSize * 1.35 ? '\n\n' : '\n') + str;
+                } else {
+                  // Same horizontal line -> check gap for word spacing
+                  const gap = x - (lastX + lastWidth);
+                  if (gap > 2.0 && !pageOut.endsWith(' ') && !str.startsWith(' ')) {
+                    pageOut += ' ' + str;
+                  } else {
+                    pageOut += str;
+                  }
+                }
+              }
+
+              lastY = y;
+              lastX = x;
+              lastWidth = it.width || (str.length * fontSize * 0.5);
+            }
+
+            return pageOut;
+          });
       }
+    });
 
-      // Process each clustered line: sort left-to-right and assemble words with spacing
-      const processedLines = [];
-      for (const lineItems of clusteredLines) {
-        lineItems.sort((a, b) => a.x - b.x);
+    const parsedText = (res.text || '').trim();
+    if (parsedText.length > 5) {
+      fullText = parsedText;
+      const rawPages = fullText.split(/\n\n--- Page Break ---\n\n|\f/);
+      pages = rawPages.map((pt, idx) => {
+        const blocks = pt.split(/\n\s*\n/).map(pStr => {
+          const trimmed = pStr.trim();
+          const isHeading1 = trimmed.length < 60 && (/^[A-Z0-9\s:,\-\.]{4,}$/.test(trimmed) && !trimmed.includes('.'));
+          const isHeading2 = !isHeading1 && trimmed.length < 80 && (trimmed.startsWith('#') || trimmed.endsWith(':'));
+          const isBullet = /^[•\-\*\u2022]|\d+[\.\)]\s/.test(trimmed);
 
-        let lineText = '';
-        let lastRight = null;
-        let lineFontSize = 10;
-        let isLineBold = false;
-        let isLineItalic = false;
-        const lineStartX = lineItems[0].x;
-        const lastItem = lineItems[lineItems.length - 1];
-        const lineEndX = lastItem.x + lastItem.width;
-        const lineY = lineItems[0].y;
+          return {
+            type: isHeading1 ? 'heading1' : isHeading2 ? 'heading2' : isBullet ? 'bullet' : 'paragraph',
+            text: trimmed,
+            fontSize: isHeading1 ? 18 : isHeading2 ? 14 : 11,
+            isBold: isHeading1 || isHeading2
+          };
+        }).filter(b => b.text.length > 0);
 
-        for (let i = 0; i < lineItems.length; i++) {
-          const item = lineItems[i];
-          lineFontSize = Math.max(lineFontSize, item.fontSize);
-          if (item.isBold) isLineBold = true;
-          if (item.isItalic) isLineItalic = true;
+        return {
+          pageNum: idx + 1,
+          width: 595,
+          height: 842,
+          paragraphs: blocks
+        };
+      });
+    }
+  } catch (err) {
+    // pdf-parse threw on certain object streams
+  }
 
-          const textChunk = item.str;
-          if (!textChunk) continue;
+  // LAYER 2: Native pdf-lib stream decompression
+  if (!fullText || fullText.length < 5) {
+    try {
+      const doc = await PDFDocument.load(inputBuffer, { ignoreEncryption: true });
+      const pageCount = doc.getPageCount();
+      const pageObjs = [];
+      const allPageText = [];
 
-          if (lastRight !== null) {
-            const gap = item.x - lastRight;
-            const spaceThreshold = Math.max(item.fontSize * 0.22, 2.0);
-            if (gap >= spaceThreshold && !lineText.endsWith(' ') && !textChunk.startsWith(' ')) {
-              lineText += ' ';
+      for (let pIdx = 0; pIdx < pageCount; pIdx++) {
+        const page = doc.getPage(pIdx);
+        const { width = 595, height = 842 } = page.getSize ? page.getSize() : {};
+        const contents = page.node.Contents();
+        if (!contents) continue;
+
+        let refs = [];
+        if (typeof contents.size === 'function') {
+          for (let i = 0; i < contents.size(); i++) refs.push(contents.get(i));
+        } else {
+          refs = [contents];
+        }
+
+        const pageLines = [];
+        for (const r of refs) {
+          const streamObj = doc.context.lookup(r);
+          if (!streamObj || !streamObj.contents) continue;
+
+          let uncompressed;
+          const rawBytes = Buffer.from(streamObj.contents);
+          try {
+            uncompressed = zlib.inflateSync(rawBytes).toString('latin1');
+          } catch {
+            try {
+              uncompressed = zlib.inflateRawSync(rawBytes).toString('latin1');
+            } catch {
+              uncompressed = rawBytes.toString('latin1');
             }
           }
 
-          lineText += textChunk;
-          lastRight = item.x + item.width;
+          const lines = parseStreamLines(uncompressed);
+          if (lines.length) pageLines.push(...lines);
         }
 
-        const trimmed = lineText.trim();
-        if (trimmed.length > 0) {
-          // Determine horizontal alignment
-          let align = 'left';
-          const leftMargin = lineStartX;
-          const rightMargin = pageWidth - lineEndX;
-          const centerDiff = Math.abs(leftMargin - rightMargin);
+        if (pageLines.length > 0) {
+          const pageStr = pageLines.join('\n');
+          allPageText.push(pageStr);
 
-          if (centerDiff < 30 && lineStartX > 40 && lineEndX < pageWidth - 40) {
-            align = 'center';
-          } else if (rightMargin < 60 && leftMargin > 100) {
-            align = 'right';
-          }
+          const blocks = pageLines.map(line => {
+            const isH1 = line.length < 50 && /^[A-Z0-9\s:,\-\.]{4,}$/.test(line);
+            const isBullet = /^[•\-\*\u2022]|\d+[\.\)]\s/.test(line);
+            return {
+              type: isH1 ? 'heading1' : isBullet ? 'bullet' : 'paragraph',
+              text: line,
+              fontSize: isH1 ? 16 : 11,
+              isBold: isH1
+            };
+          });
 
-          processedLines.push({
-            text: trimmed,
-            y: lineY,
-            x: lineStartX,
-            width: lineEndX - lineStartX,
-            fontSize: Math.round(lineFontSize * 10) / 10,
-            isBold: isLineBold,
-            isItalic: isLineItalic,
-            align,
-            items: lineItems
+          pageObjs.push({
+            pageNum: pIdx + 1,
+            width,
+            height,
+            paragraphs: blocks
           });
         }
       }
 
-      // Group processed lines into structured paragraphs / sections
-      const paragraphs = [];
-      let currentParaLines = [];
-      let prevY = null;
-      let prevFontSize = 11;
-
-      for (let i = 0; i < processedLines.length; i++) {
-        const line = processedLines[i];
-
-        if (currentParaLines.length === 0) {
-          currentParaLines.push(line);
-          prevY = line.y;
-          prevFontSize = line.fontSize;
-          continue;
-        }
-
-        const verticalGap = prevY - line.y;
-        const standardLineSpacing = prevFontSize * 1.45;
-        const isHeading = line.fontSize >= 13.5 || (line.fontSize > prevFontSize + 2 && line.isBold);
-        const prevWasHeading = currentParaLines[0].fontSize >= 13.5;
-        const isBullet = /^[•\-\*\u2022]|\d+[\.\)]\s/.test(line.text);
-
-        // Break paragraph if gap is large, or if heading, or bullet, or alignment change
-        if (
-          verticalGap > standardLineSpacing * 1.35 ||
-          isHeading ||
-          prevWasHeading ||
-          isBullet ||
-          line.align !== currentParaLines[0].align
-        ) {
-          paragraphs.push(buildParagraphData(currentParaLines, pageWidth));
-          currentParaLines = [line];
-        } else {
-          currentParaLines.push(line);
-        }
-
-        prevY = line.y;
-        prevFontSize = line.fontSize;
+      if (allPageText.length > 0) {
+        fullText = allPageText.join('\n\n--- Page Break ---\n\n').trim();
+        pages = pageObjs;
       }
-
-      if (currentParaLines.length > 0) {
-        paragraphs.push(buildParagraphData(currentParaLines, pageWidth));
-      }
-
-      pages.push({
-        pageNum,
-        width: pageWidth,
-        height: pageHeight,
-        lines: processedLines,
-        paragraphs
-      });
-
-      // Assemble plain text representation for this page
-      const pageParagraphStrings = paragraphs.map(p => p.text);
-      if (pageParagraphStrings.length > 0) {
-        textLines.push(pageParagraphStrings.join('\n\n'));
-      }
+    } catch (err) {
+      console.warn('pdf-lib stream decompression warning:', err.message);
     }
-
-    const fullText = textLines.join('\n\n--- Page Break ---\n\n').trim();
-
-    return {
-      pages,
-      fullText: fullText || 'No text extracted',
-      numPages
-    };
-  } catch (err) {
-    console.warn('pdfjs extraction failed, falling back:', err.message);
-    return extractFallbackText(inputBuffer);
   }
-}
 
-function buildParagraphData(lines, pageWidth) {
-  const firstLine = lines[0];
-  const isHeading1 = firstLine.fontSize >= 18;
-  const isHeading2 = !isHeading1 && firstLine.fontSize >= 14;
-  const isHeading3 = !isHeading1 && !isHeading2 && firstLine.fontSize >= 12.5 && firstLine.isBold;
-  const isBullet = /^[•\-\*\u2022]|\d+[\.\)]\s/.test(firstLine.text);
+  // LAYER 3: Standard pdf-parse fallback
+  if (!fullText || fullText.length < 5) {
+    try {
+      const data = await pdfParse(inputBuffer);
+      const raw = (data.text || '').replace(/\r\n/g, '\n').trim();
+      if (raw.length > 0) {
+        fullText = raw;
+        const blocks = raw.split(/\n\s*\n/).map(p => ({
+          type: 'paragraph',
+          text: p.trim(),
+          fontSize: 11
+        })).filter(b => b.text.length > 0);
 
-  let type = 'paragraph';
-  if (isHeading1) type = 'heading1';
-  else if (isHeading2) type = 'heading2';
-  else if (isHeading3) type = 'heading3';
-  else if (isBullet) type = 'bullet';
-
-  // Join lines with space if normal paragraph, or line break if poem/table/heading
-  const combinedText = lines.map(l => l.text).join(type === 'paragraph' ? ' ' : '\n');
+        pages = [{
+          pageNum: 1,
+          width: 595,
+          height: 842,
+          paragraphs: blocks
+        }];
+      }
+    } catch (e) {}
+  }
 
   return {
-    type,
-    text: combinedText,
-    fontSize: firstLine.fontSize,
-    isBold: firstLine.isBold,
-    isItalic: firstLine.isItalic,
-    align: firstLine.align,
-    lines
+    pages: pages.length > 0 ? pages : [{ pageNum: 1, width: 595, height: 842, paragraphs: [] }],
+    fullText: fullText || '',
+    numPages: pages.length || 1
   };
-}
-
-/**
- * Fallback text extraction using pdf-parse or basic pdf-lib decompression
- */
-async function extractFallbackText(inputBuffer) {
-  try {
-    const pdfParse = require('pdf-parse');
-    const data = await pdfParse(inputBuffer);
-    const cleaned = (data.text || '')
-      .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-
-    return {
-      pages: [{ pageNum: 1, width: 595, height: 842, lines: [], paragraphs: [{ type: 'paragraph', text: cleaned }] }],
-      fullText: cleaned || 'No text extracted',
-      numPages: data.numpages || 1
-    };
-  } catch (e) {
-    return {
-      pages: [],
-      fullText: 'Document text could not be extracted.',
-      numPages: 1
-    };
-  }
 }
 
 module.exports = {

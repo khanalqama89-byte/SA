@@ -23,11 +23,10 @@ async function extractEmbeddedImages(inputBuffer) {
         if (subtype && subtype.toString() === '/Image') {
           const filter = obj.dict.get(PDFName.of('Filter'));
           const filterStr = filter ? filter.toString() : '';
-          const contents = Buffer.from(obj.getContents());
+          const contents = Buffer.from(obj.contents || []);
           if (filterStr.includes('DCTDecode') || (contents[0] === 0xff && contents[1] === 0xd8)) {
             images.push({ type: 'jpeg', buffer: contents });
-          } else if (contents.length > 1000) {
-            // Check for PNG signature
+          } else if (contents.length > 500) {
             if (contents[0] === 0x89 && contents[1] === 0x50 && contents[2] === 0x4e && contents[3] === 0x47) {
               images.push({ type: 'png', buffer: contents });
             }
@@ -42,8 +41,8 @@ async function extractEmbeddedImages(inputBuffer) {
 }
 
 /**
- * High-fidelity PDF to Word (DOCX) Converter
- * Reconstructs headings, styled paragraphs, alignment, bullets, page breaks, and images.
+ * High-Fidelity PDF to Word (DOCX) Converter
+ * Converts headings, paragraphs, bullet lists, page breaks, and embedded images.
  */
 async function convertPdfToDocx(inputBuffer, options = {}) {
   const structuredData = await extractStructuredPdf(inputBuffer);
@@ -59,14 +58,18 @@ async function convertPdfToDocx(inputBuffer, options = {}) {
       const block = paragraphs[bIdx];
       const needsPageBreak = (pIdx > 0 && bIdx === 0);
 
+      // Split multiline block into separate sub-paragraphs if needed
+      const subLines = (block.text || '').split('\n').map(l => l.trim()).filter(Boolean);
+      if (subLines.length === 0) continue;
+
       // 1. Heading 1
       if (block.type === 'heading1') {
         docxElements.push(
           new Paragraph({
-            text: block.text,
+            text: subLines.join(' '),
             heading: HeadingLevel.HEADING_1,
             alignment: getDocxAlignment(block.align),
-            spacing: { before: isFirstElement ? 0 : 280, after: 140 },
+            spacing: { before: isFirstElement ? 0 : 260, after: 120 },
             pageBreakBefore: needsPageBreak
           })
         );
@@ -78,10 +81,10 @@ async function convertPdfToDocx(inputBuffer, options = {}) {
       if (block.type === 'heading2') {
         docxElements.push(
           new Paragraph({
-            text: block.text,
+            text: subLines.join(' '),
             heading: HeadingLevel.HEADING_2,
             alignment: getDocxAlignment(block.align),
-            spacing: { before: isFirstElement ? 0 : 220, after: 120 },
+            spacing: { before: isFirstElement ? 0 : 200, after: 100 },
             pageBreakBefore: needsPageBreak
           })
         );
@@ -89,97 +92,68 @@ async function convertPdfToDocx(inputBuffer, options = {}) {
         continue;
       }
 
-      // 3. Heading 3
-      if (block.type === 'heading3') {
-        docxElements.push(
-          new Paragraph({
-            text: block.text,
-            heading: HeadingLevel.HEADING_3,
-            alignment: getDocxAlignment(block.align),
-            spacing: { before: isFirstElement ? 0 : 180, after: 90 },
-            pageBreakBefore: needsPageBreak
-          })
-        );
-        isFirstElement = false;
-        continue;
-      }
-
-      // 4. Bullet / Numbered list
+      // 3. Bullet / Numbered list item
       if (block.type === 'bullet') {
-        const cleanText = block.text.replace(/^[•\-\*\u2022]\s*|^\d+[\.\)]\s*/, '').trim();
+        for (const line of subLines) {
+          const cleanText = line.replace(/^[•\-\*\u2022]\s*|^\d+[\.\)]\s*/, '').trim();
+          docxElements.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: cleanText,
+                  size: 22 // 11pt
+                })
+              ],
+              bullet: { level: 0 },
+              spacing: { after: 100, line: 300 },
+              pageBreakBefore: needsPageBreak && isFirstElement
+            })
+          );
+          isFirstElement = false;
+        }
+        continue;
+      }
+
+      // 4. Standard Paragraph(s)
+      for (const line of subLines) {
         docxElements.push(
           new Paragraph({
             children: [
               new TextRun({
-                text: cleanText,
-                size: Math.round(block.fontSize * 2) || 22,
-                bold: block.isBold,
-                italics: block.isItalic
+                text: line,
+                size: 22,
+                bold: block.isBold || false,
+                italics: block.isItalic || false
               })
             ],
-            bullet: { level: 0 },
             alignment: getDocxAlignment(block.align),
-            spacing: { after: 100, line: 320 },
-            pageBreakBefore: needsPageBreak
+            spacing: { after: 140, line: 320 },
+            pageBreakBefore: needsPageBreak && isFirstElement
           })
         );
         isFirstElement = false;
-        continue;
       }
-
-      // 5. Standard paragraph with rich text runs
-      const runs = [];
-      if (block.lines && block.lines.length > 0) {
-        for (let lIdx = 0; lIdx < block.lines.length; lIdx++) {
-          const line = block.lines[lIdx];
-          runs.push(
-            new TextRun({
-              text: line.text + (lIdx < block.lines.length - 1 ? ' ' : ''),
-              size: Math.max(18, Math.min(36, Math.round(line.fontSize * 2))) || 22,
-              bold: line.isBold,
-              italics: line.isItalic
-            })
-          );
-        }
-      } else {
-        runs.push(
-          new TextRun({
-            text: block.text,
-            size: Math.max(18, Math.min(36, Math.round(block.fontSize * 2))) || 22,
-            bold: block.isBold,
-            italics: block.isItalic
-          })
-        );
-      }
-
-      docxElements.push(
-        new Paragraph({
-          children: runs,
-          alignment: getDocxAlignment(block.align),
-          spacing: { after: 160, line: 340 },
-          pageBreakBefore: needsPageBreak
-        })
-      );
-      isFirstElement = false;
     }
   }
 
-  // Extract embedded images
+  // Extract embedded images (e.g. diagrams, photos, scanned pages)
   const embeddedImages = await extractEmbeddedImages(inputBuffer);
   if (embeddedImages.length > 0) {
-    docxElements.push(
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: 'Embedded Document Visuals & Graphics',
-            bold: true,
-            size: 24,
-            color: '4F46E5'
-          })
-        ],
-        spacing: { before: 300, after: 150 }
-      })
-    );
+    if (docxElements.length > 0) {
+      docxElements.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: 'Embedded Document Visuals & Graphics',
+              bold: true,
+              size: 24,
+              color: '4F46E5'
+            })
+          ],
+          spacing: { before: 300, after: 150 }
+        })
+      );
+    }
 
     for (const img of embeddedImages) {
       try {
@@ -195,18 +169,24 @@ async function convertPdfToDocx(inputBuffer, options = {}) {
           })
         );
       } catch (err) {
-        console.warn('Failed to embed ImageRun:', err.message);
+        console.warn('Failed to embed image into docx:', err.message);
       }
     }
   }
 
-  // If document was completely empty of text and images, add a clean overview note
+  // If document was completely empty, extract basic document metadata overview
   if (docxElements.length === 0) {
+    let pageCount = 1;
+    try {
+      const doc = await PDFDocument.load(inputBuffer, { ignoreEncryption: true });
+      pageCount = doc.getPageCount();
+    } catch {}
+
     docxElements.push(
       new Paragraph({
         children: [
           new TextRun({
-            text: 'Processed Document',
+            text: `Document Content Overview (${pageCount} page${pageCount > 1 ? 's' : ''})`,
             bold: true,
             size: 26
           })
@@ -216,7 +196,7 @@ async function convertPdfToDocx(inputBuffer, options = {}) {
       new Paragraph({
         children: [
           new TextRun({
-            text: 'This document was converted successfully into Microsoft Word (.docx) format.',
+            text: structuredData.fullText || 'This document has been converted into Microsoft Word (.docx) format.',
             size: 22
           })
         ],

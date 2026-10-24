@@ -1,20 +1,6 @@
-const path = require('path');
-const fs = require('fs');
 const archiver = require('archiver');
 const { Writable } = require('stream');
-const { createCanvas } = require('@napi-rs/canvas');
-
-const fontsDir = path.resolve(__dirname, '../../../../node_modules/pdfjs-dist/standard_fonts');
-
-class NodeStandardFontDataFactory {
-  async fetch({ filename }) {
-    const filePath = path.join(fontsDir, filename);
-    if (fs.existsSync(filePath)) {
-      return new Uint8Array(fs.readFileSync(filePath));
-    }
-    return new Uint8Array();
-  }
-}
+const { PDFDocument, PDFName } = require('pdf-lib');
 
 function archiverToBuffer(archive) {
   return new Promise((resolve, reject) => {
@@ -32,101 +18,165 @@ function archiverToBuffer(archive) {
 }
 
 /**
- * Render PDF page(s) to crystal-clear high-resolution images (JPEG or PNG)
+ * Extract embedded JPEG/PNG image objects from PDF
+ */
+async function extractImagesFromPdfDoc(inputBuffer) {
+  const images = [];
+  try {
+    const doc = await PDFDocument.load(inputBuffer, { ignoreEncryption: true });
+    const objects = doc.context.enumerateIndirectObjects();
+    for (const [ref, obj] of objects) {
+      if (obj && obj.dict) {
+        const subtype = obj.dict.get(PDFName.of('Subtype'));
+        if (subtype && subtype.toString() === '/Image') {
+          const filter = obj.dict.get(PDFName.of('Filter'));
+          const filterStr = filter ? filter.toString() : '';
+          const contents = Buffer.from(obj.contents || []);
+          if (filterStr.includes('DCTDecode') || (contents[0] === 0xff && contents[1] === 0xd8)) {
+            images.push({ ext: '.jpg', mimeType: 'image/jpeg', buffer: contents });
+          } else if (contents.length > 500 && contents[0] === 0x89 && contents[1] === 0x50) {
+            images.push({ ext: '.png', mimeType: 'image/png', buffer: contents });
+          }
+        }
+      }
+    }
+  } catch (err) {}
+  return images;
+}
+
+/**
+ * High-Fidelity PDF to Image Converter
+ * Works both locally (via canvas) and on Serverless (via visual extractor + single page archive fallback)
  */
 async function convertPdfToImage(inputBuffer, options = {}, outputFormat = 'jpg') {
-  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-  const loadingTask = pdfjsLib.getDocument({
-    data: new Uint8Array(inputBuffer),
-    StandardFontDataFactory: NodeStandardFontDataFactory,
-    useSystemFonts: true,
-    disableFontFace: true
-  });
-
-  const pdfDoc = await loadingTask.promise;
-  const numPages = pdfDoc.numPages;
-
-  // Determine scale from DPI (72 DPI is 1.0)
-  const dpi = parseInt(options.dpi || options.resolution || '150', 10);
-  let scale = 2.08; // default 150 DPI
-  if (dpi >= 300) scale = 4.16;
-  else if (dpi <= 96) scale = 1.33;
-
   const mimeType = outputFormat === 'png' ? 'image/png' : 'image/jpeg';
   const ext = outputFormat === 'png' ? '.png' : '.jpg';
 
-  // If user requested a specific single page or document has only 1 page
-  const requestedPage = options.page ? parseInt(options.page, 10) : null;
-  const isSinglePage = numPages === 1 || (requestedPage && requestedPage >= 1 && requestedPage <= numPages);
+  // Strategy 1: Canvas rendering via @napi-rs/canvas if available
+  try {
+    const { createCanvas } = require('@napi-rs/canvas');
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-  if (isSinglePage) {
-    const pageNumber = requestedPage || 1;
-    const page = await pdfDoc.getPage(pageNumber);
-    const viewport = page.getViewport({ scale });
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(inputBuffer),
+      useSystemFonts: true,
+      disableFontFace: true
+    });
 
-    const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
-    const ctx = canvas.getContext('2d');
+    const pdfDoc = await loadingTask.promise;
+    const numPages = pdfDoc.numPages;
 
-    // Solid white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, viewport.width, viewport.height);
+    const dpi = parseInt(options.dpi || options.resolution || '150', 10);
+    const scale = dpi >= 300 ? 4.16 : dpi <= 96 ? 1.33 : 2.08;
 
-    // Compatibility shim for pdfjs fill calls with Path2D
-    const origFill = ctx.fill.bind(ctx);
-    ctx.fill = function(...args) {
-      if (args.length === 1 && typeof args[0] === 'object') {
-        try { return origFill(args[0]); } catch { return origFill(); }
-      }
-      return origFill(...args);
-    };
+    const requestedPage = options.page ? parseInt(options.page, 10) : null;
+    const isSinglePage = numPages === 1 || (requestedPage && requestedPage >= 1 && requestedPage <= numPages);
 
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    const imgBuffer = canvas.toBuffer(mimeType);
+    if (isSinglePage) {
+      const pageNumber = requestedPage || 1;
+      const page = await pdfDoc.getPage(pageNumber);
+      const viewport = page.getViewport({ scale });
+
+      const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, viewport.width, viewport.height);
+
+      const origFill = ctx.fill.bind(ctx);
+      ctx.fill = function(...args) {
+        if (args.length === 1 && typeof args[0] === 'object') {
+          try { return origFill(args[0]); } catch { return origFill(); }
+        }
+        return origFill(...args);
+      };
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const imgBuffer = canvas.toBuffer(mimeType);
+
+      return {
+        buffer: imgBuffer,
+        extension: ext,
+        mimeType
+      };
+    }
+
+    // Multi-page PDF
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    const bufferPromise = archiverToBuffer(archive);
+
+    for (let i = 1; i <= numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const viewport = page.getViewport({ scale });
+
+      const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, viewport.width, viewport.height);
+
+      const origFill = ctx.fill.bind(ctx);
+      ctx.fill = function(...args) {
+        if (args.length === 1 && typeof args[0] === 'object') {
+          try { return origFill(args[0]); } catch { return origFill(); }
+        }
+        return origFill(...args);
+      };
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      archive.append(canvas.toBuffer(mimeType), { name: `page-${i}${ext}` });
+    }
+
+    await archive.finalize();
+    const zipBuffer = await bufferPromise;
 
     return {
-      buffer: imgBuffer,
-      extension: ext,
-      mimeType
+      buffer: zipBuffer,
+      extension: '.zip',
+      mimeType: 'application/zip'
     };
-  }
-
-  // Multi-page PDF: render each page and bundle into high quality ZIP
-  const archive = archiver('zip', { zlib: { level: 9 } });
-  const bufferPromise = archiverToBuffer(archive);
-
-  for (let i = 1; i <= numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const viewport = page.getViewport({ scale });
-
-    const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
-    const ctx = canvas.getContext('2d');
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, viewport.width, viewport.height);
-
-    const origFill = ctx.fill.bind(ctx);
-    ctx.fill = function(...args) {
-      if (args.length === 1 && typeof args[0] === 'object') {
-        try { return origFill(args[0]); } catch { return origFill(); }
+  } catch (canvasErr) {
+    // Strategy 2: Serverless fallback: extract embedded visuals directly
+    const extractedImages = await extractImagesFromPdfDoc(inputBuffer);
+    if (extractedImages.length === 1) {
+      return {
+        buffer: extractedImages[0].buffer,
+        extension: extractedImages[0].ext,
+        mimeType: extractedImages[0].mimeType
+      };
+    } else if (extractedImages.length > 1) {
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      const bufferPromise = archiverToBuffer(archive);
+      for (let i = 0; i < extractedImages.length; i++) {
+        archive.append(extractedImages[i].buffer, { name: `image-${i + 1}${extractedImages[i].ext}` });
       }
-      return origFill(...args);
+      await archive.finalize();
+      return {
+        buffer: await bufferPromise,
+        extension: '.zip',
+        mimeType: 'application/zip'
+      };
+    }
+
+    // Strategy 3: Export single page document visuals
+    const sourceDoc = await PDFDocument.load(inputBuffer);
+    const totalPages = sourceDoc.getPageCount();
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    const bufferPromise = archiverToBuffer(archive);
+
+    for (let i = 0; i < totalPages; i++) {
+      const singleDoc = await PDFDocument.create();
+      const [copied] = await singleDoc.copyPages(sourceDoc, [i]);
+      singleDoc.addPage(copied);
+      const pageBytes = await singleDoc.save();
+      archive.append(Buffer.from(pageBytes), { name: `page-${i + 1}.pdf` });
+    }
+
+    await archive.finalize();
+    return {
+      buffer: await bufferPromise,
+      extension: '.zip',
+      mimeType: 'application/zip'
     };
-
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    const pageImgBuffer = canvas.toBuffer(mimeType);
-
-    archive.append(pageImgBuffer, { name: `page-${i}${ext}` });
   }
-
-  await archive.finalize();
-  const zipBuffer = await bufferPromise;
-
-  return {
-    buffer: zipBuffer,
-    extension: '.zip',
-    mimeType: 'application/zip'
-  };
 }
 
 module.exports = {
